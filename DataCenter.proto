@@ -5,8 +5,159 @@ package DataCenterProto;
 // 空参数
 message Empty {}
 
+// 点值质量
+enum Quality {
+  QUALITY_UNSPECIFIED = 0;
+  QUALITY_GOOD        = 1;
+  QUALITY_BAD         = 2;
+  QUALITY_UNCERTAIN   = 3;
+}
+
+// 点值（按需扩展）
+message PointValue {
+  oneof kind {
+    bool   bool_value   = 1;
+    int64  int_value    = 2;
+    double double_value = 3;
+    string string_value = 4;
+    bytes  bytes_value  = 5;
+  }
+}
+
+// 端点：一个连接内的一个逻辑点
+message Endpoint {
+  // 连接 ID（全局唯一，建议重启保持不变；0 表示未设置）
+  uint32 conn_id = 1;
+  // 逻辑点名（UTF-8，可中文）
+  string tag = 2;
+}
+
+// 连接信息（用于展示/校验）
+message ConnectionInfo {
+  uint32 conn_id     = 1;
+  string module_name = 2;
+  string conn_name   = 3;
+}
+
+message UpsertConnectionRequest {
+  ConnectionInfo conn = 1;
+}
+
+message ListConnectionsResponse {
+  repeated ConnectionInfo conns = 1;
+}
+
+// 点表（用于展示/校验）
+message PointTable {
+  uint32          conn_id = 1;
+  repeated string tags    = 2;
+}
+
+message UpsertPointTableRequest {
+  uint32          conn_id = 1;
+  repeated string tags    = 2;
+  // true: 覆盖更新；false: 增量追加
+  bool replace = 3;
+}
+
+message GetPointTableRequest {
+  uint32 conn_id = 1;
+}
+
+// 有向路由：src -> dst
+message Route {
+  Endpoint src = 1;
+  Endpoint dst = 2;
+}
+
+message UpsertRoutesRequest {
+  repeated Route routes = 1;
+  // true: 覆盖全部路由；false: 增量追加
+  bool replace = 2;
+}
+
+message DeleteRoutesRequest {
+  repeated Route routes = 1;
+}
+
+message ListRoutesRequest {
+  // 过滤条件（默认 0/空 表示不做过滤）
+  uint32 src_conn_id = 1;
+  string src_tag     = 2;
+  uint32 dst_conn_id = 3;
+  string dst_tag     = 4;
+}
+
+message ListRoutesResponse {
+  repeated Route routes = 1;
+}
+
+// 发布点值（源连接/点）
+message PublishRequest {
+  uint32     conn_id  = 1;
+  string     tag      = 2;
+  PointValue value    = 3;
+  // 毫秒时间戳；<=0 表示由 DataCenter 填充
+  int64   ts_ms   = 4;
+  Quality quality = 5;
+}
+
+message BatchPublishRequest {
+  repeated PublishRequest points = 1;
+}
+
+// 路由后的点值更新（目的连接/点）
+message PointUpdate {
+  uint32 src_conn_id = 1;
+  string src_tag     = 2;
+  uint32 dst_conn_id = 3;
+  string dst_tag     = 4;
+
+  PointValue value   = 5;
+  int64      ts_ms   = 6;
+  Quality    quality = 7;
+}
+
+message SubscribeRequest {
+  // 订阅哪个连接的数据（目的连接）
+  uint32 conn_id = 1;
+  // 订阅过滤：空表示订阅该连接全部 tag
+  repeated string tags = 2;
+  // true: 先推送一次最新值快照（best-effort），再推送实时更新
+  bool snapshot = 3;
+}
+
+message GetLatestRequest {
+  uint32          conn_id = 1;
+  repeated string tags    = 2;
+}
+
+message GetLatestResponse {
+  repeated PointUpdate updates = 1;
+}
+
 // 数据中心服务
 service DataCenterService {
-  // 获取数据模型
-  rpc GetDataModule(Empty) returns (Empty);
+  // 注册/更新连接信息（用于展示/校验）
+  rpc UpsertConnection(UpsertConnectionRequest) returns (Empty);
+  rpc ListConnections(Empty) returns (ListConnectionsResponse);
+
+  // 注册/更新点表（用于展示/校验）
+  rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
+  rpc GetPointTable(GetPointTableRequest) returns (PointTable);
+
+  // 配置有向路由
+  rpc UpsertRoutes(UpsertRoutesRequest) returns (Empty);
+  rpc DeleteRoutes(DeleteRoutesRequest) returns (Empty);
+  rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
+
+  // 发布点值（源连接/点）
+  rpc Publish(PublishRequest) returns (Empty);
+  rpc BatchPublish(BatchPublishRequest) returns (Empty);
+
+  // 获取目的连接内的最新值（best-effort）
+  rpc GetLatest(GetLatestRequest) returns (GetLatestResponse);
+
+  // 订阅目的连接的数据更新
+  rpc Subscribe(SubscribeRequest) returns (stream PointUpdate);
 }

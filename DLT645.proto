@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package DLT645Proto;
+
+message Empty {}
+
+service DLT645Service {
+  rpc Ping(Empty) returns (Empty);
+}

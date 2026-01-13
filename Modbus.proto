@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package ModbusProto;
+
+message Empty {}
+
+service ModbusService {
+  rpc Ping(Empty) returns (Empty);
+}
