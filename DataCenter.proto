@@ -53,6 +53,11 @@ message PointTable {
   repeated string tags    = 2;
 }
 
+// 点表配置（用于落盘持久化）
+message PointTablesConfig {
+  repeated PointTable point_tables = 1;
+}
+
 message UpsertPointTableRequest {
   uint32          conn_id = 1;
   repeated string tags    = 2;
@@ -89,6 +94,11 @@ message ListRoutesRequest {
 }
 
 message ListRoutesResponse {
+  repeated Route routes = 1;
+}
+
+// 路由配置（用于落盘持久化）
+message RoutesConfig {
   repeated Route routes = 1;
 }
 
