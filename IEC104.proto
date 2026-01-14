@@ -5,8 +5,129 @@ package IEC104Proto;
 // 空参数
 message Empty {}
 
-// 数据中心服务
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_SERVER      = 1;
+  ROLE_CLIENT      = 2;
+}
+
+enum LinkState {
+  LINK_STATE_UNSPECIFIED   = 0;
+  LINK_STATE_STOPPED       = 1;
+  LINK_STATE_RUNNING       = 2;
+  LINK_STATE_PENDING_DELETE = 3;
+}
+
+message Endpoint {
+  string ip   = 1;
+  uint32 port = 2;
+}
+
+message APCIParameters {
+  // I 帧发送窗口（k）与接收窗口（w）
+  uint32 k = 1;
+  uint32 w = 2;
+  // 定时器：单位秒
+  uint32 t0 = 3;
+  uint32 t1 = 4;
+  uint32 t2 = 5;
+  uint32 t3 = 6;
+}
+
+message LinkConfig {
+  // 由上位机指定的人类可读代称，要求在 IEC104 模块内唯一
+  string conn_name = 1;
+  Role   role      = 2;
+
+  // SERVER: local 为监听地址；CLIENT: 可选本地绑定地址（留空表示由系统选择）
+  Endpoint local  = 3;
+  // CLIENT: remote 为对端地址；SERVER: 当前版本忽略（预留用于白名单/绑定）
+  Endpoint remote = 4;
+
+  // IEC101/104 参数（后续按需扩展）
+  uint32 ca = 5;
+  uint32 oa = 6;
+
+  APCIParameters apci = 7;
+}
+
+message LinkInfo {
+  LinkConfig config = 1;
+  // 由 IEC104 向 DataCenter 获取/创建并返回给上位机
+  uint32 conn_id = 2;
+  LinkState state = 3;
+  string last_error = 4;
+}
+
+message UpsertLinkRequest {
+  LinkConfig config = 1;
+  // true: 若已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置
+  bool create_only = 2;
+}
+
+message GetLinkRequest {
+  string conn_name = 1;
+}
+
+message DeleteLinkRequest {
+  string conn_name = 1;
+}
+
+message StartLinkRequest {
+  string conn_name = 1;
+}
+
+message StopLinkRequest {
+  string conn_name = 1;
+}
+
+message ListLinksResponse {
+  repeated LinkInfo links = 1;
+}
+
+enum TelemetryType {
+  TELEMETRY_TYPE_UNSPECIFIED = 0;
+  // M_ME_NC_1: short float
+  TELEMETRY_TYPE_FLOAT       = 1;
+}
+
+message TelemetryPoint {
+  string        tag    = 1;
+  uint32        ioa    = 2;
+  TelemetryType type   = 3;
+  // 预留：标度与偏移（当前不生效）
+  double scale  = 4;
+  double offset = 5;
+}
+
+message UpsertPointTableRequest {
+  string conn_name = 1;
+  repeated TelemetryPoint points = 2;
+  // true: 覆盖更新；false: 增量追加
+  bool replace = 3;
+}
+
+message GetPointTableRequest {
+  string conn_name = 1;
+}
+
+message PointTable {
+  string conn_name = 1;
+  repeated TelemetryPoint points = 2;
+}
+
 service IEC104Service {
-  // 获取数据模型
+  rpc Ping(Empty) returns (Empty);
+  // 兼容：旧接口（等价 Ping）
   rpc Test(Empty) returns (Empty);
+
+  rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
+  rpc GetLink(GetLinkRequest) returns (LinkInfo);
+  rpc ListLinks(Empty) returns (ListLinksResponse);
+  rpc DeleteLink(DeleteLinkRequest) returns (Empty);
+  rpc StartLink(StartLinkRequest) returns (Empty);
+  rpc StopLink(StopLinkRequest) returns (Empty);
+
+  rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
+  rpc GetPointTable(GetPointTableRequest) returns (PointTable);
 }
