@@ -4,6 +4,9 @@ package ModbusProto;
 
 message Empty {}
 
+// Modbus 模块对外 gRPC 服务（占位）：用于上位机探测模块是否可达。
+// TODO：后续在此 service 扩展 Modbus 链路/点表/运行态等配置接口。
 service ModbusService {
+  // 健康探测：返回 OK 表示服务可达。
   rpc Ping(Empty) returns (Empty);
 }

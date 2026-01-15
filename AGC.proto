@@ -2,8 +2,171 @@ syntax = "proto3";
 
 package AGCProto;
 
+// 空参数
 message Empty {}
 
+// 值语义：ABSOLUTE=目标值；DELTA=增量值（相对某个 base）。
+enum ValueMode {
+  VALUE_MODE_UNSPECIFIED = 0;
+  VALUE_MODE_ABSOLUTE    = 1;
+  VALUE_MODE_DELTA       = 2;
+}
+
+// 增量基准（仅在 mode=DELTA 时生效）
+enum DeltaBase {
+  DELTA_BASE_UNSPECIFIED   = 0;
+  // 相对“上一轮输出目标值”（AGC 内部记忆）
+  DELTA_BASE_LAST_TARGET   = 1;
+  // 相对“当前量测值”（来自输入量测点）
+  DELTA_BASE_CURRENT_MEAS  = 2;
+  // 相对“base_tag 对应的值”（同一 conn_id 内，通过 DataCenter 路由输入）
+  DELTA_BASE_BASE_TAG      = 3;
+}
+
+// 一个点的描述：tag+单位+线性换算
+// raw 表示 DataCenter 中的值；abs: phys=raw*scale+offset；delta: phys=raw*scale。
+message SignalSpec {
+  string tag    = 1;
+  string unit   = 2;
+  double scale  = 3;
+  double offset = 4;
+}
+
+// 输入/输出点的值语义配置
+message ValueSpec {
+  SignalSpec signal = 1;
+  ValueMode  mode = 2;
+  DeltaBase  delta_base = 3;
+  // 仅当 delta_base=BASE_TAG 时使用；该 tag 的换算规则默认复用 signal 的 scale/offset。
+  string base_tag = 4;
+}
+
+// 控制环参数（后续可扩展 PI/限斜率/滤波等）
+message ControlLoopConfig {
+  // 周期（毫秒）
+  uint32 period_ms   = 1;
+  // 死区（kW）
+  double deadband_kw = 2;
+  // 每周期最大调整量（kW）
+  double max_step_kw = 3;
+  // 比例系数（0~1 常用）
+  double kp          = 4;
+}
+
+message WeightedStrategyConfig {}
+
+message StrategyConfig {
+  oneof strategy {
+    WeightedStrategyConfig weighted = 1;
+  }
+}
+
+// 成员（例如一个逆变器）
+message MemberConfig {
+  string member_name = 1;
+  // true: 可控；false: 不可控（只参与量测汇总，不参与分配）
+  bool controllable  = 2;
+
+  // 额定容量（kW）
+  double capacity_kw = 3;
+  // 分配权重：平均分配 weight=1；按容量比例 weight=capacity_kw
+  double weight      = 4;
+  // 约束（kW）；若未配置可由上位机填 0/capacity_kw
+  double min_kw      = 5;
+  double max_kw      = 6;
+
+  // 成员量测点（例如逆变器实时有功）
+  SignalSpec p_meas  = 7;
+  // 成员设定点（输出到 DataCenter，由有向路由转发给下游连接）
+  ValueSpec  p_set   = 8;
+}
+
+// 派生输出点（由 AGC 发布，可被路由到其他连接，例如主站 IEC104）
+message DerivedOutputs {
+  SignalSpec p_total_meas   = 1;  // 台区总实时有功
+  SignalSpec p_total_target = 2;  // 台区总目标有功（AGC 计算/记忆）
+  SignalSpec p_total_error  = 3;  // 台区总偏差（target - meas）
+}
+
+// 一个 AGC 连接（conn_name）对应一个控制组
+message GroupConfig {
+  string group_name = 1;
+
+  // 主站下发点（通过 DataCenter 路由进入 AGC 的 conn_id）
+  ValueSpec p_cmd   = 2;
+
+  ControlLoopConfig loop     = 3;
+  StrategyConfig    strategy = 4;
+
+  repeated MemberConfig members = 5;
+  DerivedOutputs outputs = 6;
+}
+
+enum GroupState {
+  GROUP_STATE_UNSPECIFIED    = 0;
+  GROUP_STATE_STOPPED        = 1;
+  GROUP_STATE_RUNNING        = 2;
+  GROUP_STATE_PENDING_DELETE = 3;
+}
+
+message GroupInfo {
+  GroupConfig config = 1;
+  // 由 DataCenter 分配/持久化
+  uint32 conn_id = 2;
+  GroupState state = 3;
+  string last_error = 4;
+}
+
+message UpsertGroupRequest {
+  GroupConfig config = 1;
+  // true: 若已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置
+  bool create_only = 2;
+}
+
+message GetGroupRequest {
+  string group_name = 1;
+}
+
+message DeleteGroupRequest {
+  string group_name = 1;
+}
+
+message StartGroupRequest {
+  string group_name = 1;
+}
+
+message StopGroupRequest {
+  string group_name = 1;
+}
+
+message ListGroupsResponse {
+  repeated GroupInfo groups = 1;
+}
+
+// AGC 模块对外 gRPC 服务（控制面）：用于上位机配置/启停 AGC 控制组（group）。
+// - 每个 group 通过 DataCenter 分配/持久化一个 conn_id，并通过 tag 与外部连接完成“命令输入/量测汇总/设定输出”的数据闭环。
+// 说明：当前代码实现仅覆盖 Ping，其余 RPC 若未实现将返回 UNIMPLEMENTED。
 service AGCService {
+  // 健康探测：返回 OK 表示服务可达。
   rpc Ping(Empty) returns (Empty);
+
+  // 创建/更新一个控制组配置，并为该 group 分配/查询 DataCenter 的 conn_id。
+  // - create_only=true：若 group_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - 常见错误：INVALID_ARGUMENT（配置缺失/字段非法）、FAILED_PRECONDITION（运行中不允许更新）、UNAVAILABLE（DataCenter 不可达）。
+  // - 返回：GroupInfo（包含 conn_id、state、last_error）。
+  rpc UpsertGroup(UpsertGroupRequest) returns (GroupInfo);
+  // 查询单个控制组信息（配置 + 运行态）。
+  // - 常见错误：NOT_FOUND（group_name 不存在）、INVALID_ARGUMENT（group_name 为空）。
+  rpc GetGroup(GetGroupRequest) returns (GroupInfo);
+  // 列出全部控制组信息（配置 + 运行态）。
+  rpc ListGroups(Empty) returns (ListGroupsResponse);
+  // 删除控制组：停止并清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="AGC", group_name)）。
+  // - 若 DataCenter 删除失败（非 NOT_FOUND），可标记为 PENDING_DELETE 并返回错误码，提示上位机重试。
+  rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
+  // 启动控制组：启动控制环周期任务，并与 DataCenter 建立订阅/发布通道。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除）。
+  rpc StartGroup(StartGroupRequest) returns (Empty);
+  // 停止控制组：停止控制环任务，并停止与 DataCenter 的订阅/发布通道（若有）。
+  // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。
+  rpc StopGroup(StopGroupRequest) returns (Empty);
 }

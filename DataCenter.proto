@@ -172,32 +172,83 @@ message GetLatestResponse {
   repeated PointUpdate updates = 1;
 }
 
-// 数据中心服务
+// 数据中心服务：进程内“数据总线/转发枢纽”。
+// - 上位机负责下发连接/点表/路由配置；各协议模块负责 Publish/Subscribe 与协议互操作。
+// - 重要语义：Subscribe 与最新值缓存均为 best-effort（可能丢消息）；配置落盘失败会返回 Status，但内存状态不会回滚。
 service DataCenterService {
-  // 注册/更新连接信息（用于展示/校验）
+  // 注册/更新已分配 conn_id 的连接信息（展示/校验用）。
+  // - 说明：不会分配 conn_id；若 conn_id 未在注册表中存在则返回 NOT_FOUND。
+  // - 常见错误：INVALID_ARGUMENT（字段缺失）、NOT_FOUND（conn_id 未分配）、ALREADY_EXISTS（(module_name, conn_name) 冲突）。
+  // - 副作用：成功后会触发连接注册表落盘（失败返回 INTERNAL；内存不回滚）。
   rpc UpsertConnection(UpsertConnectionRequest) returns (Empty);
+
+  // 列出连接注册表中的全部连接信息（用于 UI 展示/校验）。
   rpc ListConnections(Empty) returns (ListConnectionsResponse);
-  // connId 分配器：按 (module_name, conn_name) 分配/查询 conn_id
+
+  // conn_id 分配器：按 (module_name, conn_name) 查询/创建稳定的 conn_id（全局唯一，可持久化）。
+  // - 若 key 已存在：返回既有 ConnectionInfo。
+  // - 若 key 不存在：分配新的 conn_id 并写入注册表。
+  // - 常见错误：INVALID_ARGUMENT（key 缺失）、RESOURCE_EXHAUSTED（conn_id 耗尽）。
+  // - 副作用：成功后会触发连接注册表落盘（失败返回 INTERNAL；内存不回滚）。
   rpc GetOrCreateConnection(GetOrCreateConnectionRequest) returns (ConnectionInfo);
+
+  // 重命名连接主键：将 (module_name, conn_name) 从 old_key 改为 new_key，conn_id 保持不变。
+  // - 若 old_key == new_key：幂等返回该连接信息。
+  // - 常见错误：INVALID_ARGUMENT（key 缺失）、NOT_FOUND（old_key 不存在）、ALREADY_EXISTS（new_key 已被其他 conn_id 占用）。
+  // - 副作用：成功后会触发连接注册表落盘（失败返回 INTERNAL；内存不回滚）。
   rpc RenameConnection(RenameConnectionRequest) returns (ConnectionInfo);
+
+  // 删除连接（按 (module_name, conn_name)）。
+  // - 副作用：会删除该 conn_id 关联的点表/路由/最新值缓存，并关闭该 conn_id 的所有订阅流（best-effort）。
+  // - 常见错误：INVALID_ARGUMENT（key 缺失）、NOT_FOUND（连接不存在）。
+  // - 落盘：会依次落盘 connections/point_tables/routes（任一步失败返回 INTERNAL；内存不回滚）。
   rpc DeleteConnection(DeleteConnectionRequest) returns (Empty);
 
-  // 注册/更新点表（用于展示/校验）
+  // 注册/更新某连接的点表（tag 列表，用于路由配置校验/展示）。
+  // - replace=true：覆盖该 conn_id 的全部 tags；false：增量追加 tags。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）。
+  // - 副作用：成功后会触发点表落盘（失败返回 INTERNAL；内存不回滚）。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
+
+  // 获取某连接的点表（tag 列表）。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0）、NOT_FOUND（点表不存在）。
   rpc GetPointTable(GetPointTableRequest) returns (PointTable);
 
-  // 配置有向路由
+  // 配置有向路由：src Endpoint -> dst Endpoint。
+  // - replace=true：先清空全部路由再写入；false：增量追加。
+  // - 校验：当某 conn_id 已存在点表时，src/dst 的 tag 必须在该点表中；否则返回 INVALID_ARGUMENT。
+  // - 注意：当前实现为“逐条写入”，遇到错误会提前返回，已写入的路由不会回滚；replace=true 也会先清空再处理。
+  // - 副作用：成功后会触发路由落盘（失败返回 INTERNAL；内存不回滚）。
   rpc UpsertRoutes(UpsertRoutesRequest) returns (Empty);
+
+  // 删除指定路由绑定（不存在则忽略）。
+  // - 常见错误：INVALID_ARGUMENT（src/dst 端点缺失）。
+  // - 副作用：成功后会触发路由落盘（失败返回 INTERNAL；内存不回滚）。
   rpc DeleteRoutes(DeleteRoutesRequest) returns (Empty);
+
+  // 查询路由列表；支持按 src/dst 的 conn_id/tag 做可选过滤（0/空表示不滤）。
   rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
 
-  // 发布点值（源连接/点）
+  // 发布单点数据（源端点）：DataCenter 按路由生成 PointUpdate，并写入目的端点“最新值缓存”，同时推送订阅者。
+  // - ts_ms<=0：由 DataCenter 填充当前毫秒时间戳。
+  // - 若该 src 端点无路由：返回 OK（不产生更新）。
+  // - 常见错误：INVALID_ARGUMENT（conn_id/tag/value 缺失）。
   rpc Publish(PublishRequest) returns (Empty);
+
+  // 批量发布（减少 RPC 次数）；语义与 Publish 等价。
+  // - 原子校验：会先校验所有 points 的 conn_id/tag/value；若任一不合法则整批失败（不产生任何更新）。
+  // - ts_ms<=0：对每个 point 分别填充当前毫秒时间戳。
   rpc BatchPublish(BatchPublishRequest) returns (Empty);
 
-  // 获取目的连接内的最新值（best-effort）
+  // 拉取目的连接内的最新值快照（best-effort；仅最新值，不含历史）。
+  // - tags 为空：返回该 conn_id 下全部已缓存点；否则只返回过滤集合。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）。
   rpc GetLatest(GetLatestRequest) returns (GetLatestResponse);
 
-  // 订阅目的连接的数据更新
+  // 订阅目的连接的数据更新（服务端流，best-effort）。
+  // - tags 为空：订阅该 conn_id 下全部点；否则仅订阅过滤集合。
+  // - snapshot=true：先 best-effort 推送一次 GetLatest 快照，再推送实时更新。
+  // - 背压：客户端消费过慢时服务端会丢弃过旧消息以限制队列增长（不保证每条更新都可达）。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）。
   rpc Subscribe(SubscribeRequest) returns (stream PointUpdate);
 }

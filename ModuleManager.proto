@@ -38,20 +38,31 @@ message ModuleRunningInfos {
   repeated ModuleRunningInfo module_running_info = 1;
 }
 
-// 模块管理功能
+// 模块管理服务：用于上位机发现模块、启动/停止模块、查询运行时 gRPC 地址等。
+// 说明：当前实现大多返回 OK（失败场景主要通过日志或回读查询验证），后续可扩展为返回明确错误码。
 service ModuleManage {
-  // 获取模块信息
+  // 扫描工作目录 `./lib` 下的模块共享库并返回模块列表。
+  // - 用途：上位机展示“可启动模块”列表；建议将返回结果作为 Start/Stop 的入参，避免 module_name/lib_name 不匹配。
+  // - 返回：每个模块包含 module_name、lib_name、version（从 `.so.<version>` 解析，解析失败则为空）。
   rpc GetModuleInfo(Empty) returns (ModuleInfos) {}
-  // 获取模块时信息
+  // 获取已启动模块的运行时信息。
+  // - 返回：module_name/lib_name/version，以及 inner_grpc_server（unix socket）与 outer_grpc_server（TCP）。
+  // - 说明：模块端口可能随重启变化；上位机应在连接失败时重新调用本 RPC 刷新地址。
   rpc GetRunningModuleInfo(Empty) returns (ModuleRunningInfos) {}
-  // 启动模块
+  // 启动指定模块：动态加载共享库，调用 create() 工厂函数创建实例，并在独立线程运行模块 start()。
+  // - 入参：建议使用 GetModuleInfo 返回的 ModuleInfo；仅凭 module_name 可能无法定位到正确库文件。
+  // - 副作用：模块可能创建/占用对外 gRPC 端口与 `./socket/<模块名>.sock`（模块内部 gRPC）。
   rpc StartModule(ModuleInfo) returns (Empty) {}
-  // 停止模块
+  // 停止指定模块：请求模块停止、关闭其 gRPC Server、回收线程并卸载共享库。
+  // - 入参：与 StartModule 一致；通常使用 GetRunningModuleInfo 返回的 module_name/lib_name。
   rpc StopModule(ModuleInfo) returns (Empty) {}
-  // 上传模块
+  // 上传模块（预留）。
+  // - 当前实现：no-op，仅返回 OK。
   rpc UploadModule(Empty) returns (Empty) {}
-  // 删除模块
+  // 删除模块（预留）。
+  // - 当前实现：no-op，仅返回 OK。
   rpc DeleteModule(ModuleInfo) returns (Empty) {}
-  // 保存启动模块信息
+  // 保存“启动模块列表”配置到 `./conf/modConf.bin`（protobuf 二进制），用于上位机记忆启动集。
+  // - 当前实现：仅落盘保存，不会在启动时自动读取并启动（如需自启动请由上位机调用 StartModule）。
   rpc SaveModuleStartConfig(ModuleInfos) returns (Empty) {}
 }

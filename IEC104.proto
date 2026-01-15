@@ -116,14 +116,38 @@ message PointTable {
   repeated TelemetryPoint points = 2;
 }
 
+// IEC104 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停链路。
+// 数据面通过 DataCenter 完成转发闭环：Client 收到遥测后 Publish，Server 通过 Subscribe/GetLatest 上送与总召。
 service IEC104Service {
+  // 创建/更新一条 IEC104 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
+  // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - ROLE_SERVER：会校验 local.port，并进行端口冲突/占用检查；ROLE_CLIENT：会校验 remote.ip/remote.port。
+  // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
+  // 查询单条链路信息（配置 + 运行态）。
+  // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
   rpc GetLink(GetLinkRequest) returns (LinkInfo);
+  // 列出全部链路信息（配置 + 运行态）。
   rpc ListLinks(Empty) returns (ListLinksResponse);
+  // 删除一条链路：先停止链路，再请求 DataCenter 删除对应连接（按 (module_name="IEC104", conn_name)）。
+  // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
+  // - 幂等：DataCenter 返回 NOT_FOUND 时视为“已删除”，返回 OK。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
+  // 启动链路的 TCP 监听/连接。
+  // - ROLE_SERVER：启动后会订阅 DataCenter（conn_id + 点表 tags），将点值更新转为 IEC104 遥测自发上送。
+  // - ROLE_CLIENT：启动后收到遥测会按点表映射为 tag，并 Publish 到 DataCenter。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）。
   rpc StartLink(StartLinkRequest) returns (Empty);
+  // 停止链路的 TCP 监听/连接，并停止与 DataCenter 的订阅交互（若有）。
+  // - 幂等：重复 StopLink 不会报错（前提是 conn_name 存在）。
   rpc StopLink(StopLinkRequest) returns (Empty);
 
+  // 下发/更新点表（tag <-> IOA 映射）。
+  // - replace=true：覆盖更新；false：增量追加/更新（若 tag 与 ioa 冲突返回 ALREADY_EXISTS）。
+  // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
+  // - 副作用：会将“tags 列表”同步到 DataCenter 的点表（用于路由配置校验/展示）。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
+  // 获取点表（tag <-> IOA 映射）。
+  // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
   rpc GetPointTable(GetPointTableRequest) returns (PointTable);
 }
