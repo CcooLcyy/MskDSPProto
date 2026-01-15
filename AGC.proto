@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package AGCProto;
+
+message Empty {}
+
+service AGCService {
+  rpc Ping(Empty) returns (Empty);
+}

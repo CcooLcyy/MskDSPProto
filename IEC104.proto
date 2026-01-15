@@ -117,10 +117,6 @@ message PointTable {
 }
 
 service IEC104Service {
-  rpc Ping(Empty) returns (Empty);
-  // 兼容：旧接口（等价 Ping）
-  rpc Test(Empty) returns (Empty);
-
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   rpc GetLink(GetLinkRequest) returns (LinkInfo);
   rpc ListLinks(Empty) returns (ListLinksResponse);

@@ -177,7 +177,7 @@ service DataCenterService {
   // 注册/更新连接信息（用于展示/校验）
   rpc UpsertConnection(UpsertConnectionRequest) returns (Empty);
   rpc ListConnections(Empty) returns (ListConnectionsResponse);
-  // 连接注册中心：按 (module_name, conn_name) 分配/查询 conn_id
+  // connId 分配器：按 (module_name, conn_name) 分配/查询 conn_id
   rpc GetOrCreateConnection(GetOrCreateConnectionRequest) returns (ConnectionInfo);
   rpc RenameConnection(RenameConnectionRequest) returns (ConnectionInfo);
   rpc DeleteConnection(DeleteConnectionRequest) returns (Empty);
