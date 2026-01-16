@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package ConfigPusherProto;
+
+import "IEC104.proto";
+import "ModbusRTU.proto";
+
+message Empty {}
+
+message Iec104LinkTask {
+  IEC104Proto.UpsertLinkRequest link = 1;
+  IEC104Proto.UpsertPointTableRequest point_table = 2;
+  bool start = 3;
+}
+
+message Iec104Config {
+  repeated Iec104LinkTask links = 1;
+}
+
+message ModbusRtuLinkTask {
+  ModbusRTUProto.UpsertLinkRequest link = 1;
+  ModbusRTUProto.UpsertPointTableRequest point_table = 2;
+  bool start = 3;
+}
+
+message ModbusRtuConfig {
+  repeated ModbusRtuLinkTask links = 1;
+}
+
+message Config {
+  Iec104Config iec104 = 1;
+  ModbusRtuConfig modbus_rtu = 2;
+}
+
+// ConfigPusher 服务：用于对外健康探测（当前仅提供 Ping），不包含配置下发 RPC。
+service ConfigPusherService {
+  // 健康探测：用于检测服务可达，幂等、无副作用；常见错误为 UNAVAILABLE。
+  rpc Ping(Empty) returns (Empty);
+}

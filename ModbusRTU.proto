@@ -1,0 +1,165 @@
+syntax = "proto3";
+
+package ModbusRTUProto;
+
+// 空参数
+message Empty {}
+
+// 串口奇偶校验
+enum Parity {
+  PARITY_UNSPECIFIED = 0;
+  PARITY_NONE        = 1;
+  PARITY_ODD         = 2;
+  PARITY_EVEN        = 3;
+}
+
+// 串口停止位
+enum StopBits {
+  STOP_BITS_UNSPECIFIED = 0;
+  STOP_BITS_ONE         = 1;
+  STOP_BITS_TWO         = 2;
+}
+
+// 点表地址基准
+enum AddressBase {
+  ADDRESS_BASE_UNSPECIFIED = 0;
+  ADDRESS_BASE_ZERO        = 1;  // 协议偏移（0 基）
+  ADDRESS_BASE_ONE         = 2;  // 人类编号（1 基）
+}
+
+enum LinkState {
+  LINK_STATE_UNSPECIFIED    = 0;
+  LINK_STATE_STOPPED        = 1;
+  LINK_STATE_RUNNING        = 2;
+  LINK_STATE_PENDING_DELETE = 3;
+}
+
+// 串口配置
+message SerialConfig {
+  // 设备路径，例如 /dev/ttyUSB0
+  string device = 1;
+  uint32 baud_rate = 2;
+  uint32 data_bits = 3;
+  Parity parity = 4;
+  StopBits stop_bits = 5;
+  // 读超时，单位毫秒（0 表示使用默认值）
+  uint32 read_timeout_ms = 6;
+}
+
+message LinkConfig {
+  // 由上位机指定的人类可读代称，要求在 ModbusRTU 模块内唯一
+  string conn_name = 1;
+  SerialConfig serial = 2;
+  // 从站地址（1..247）
+  uint32 slave_id = 3;
+  // 轮询周期，单位毫秒（0 表示使用默认值）
+  uint32 poll_interval_ms = 4;
+  // 点表地址基准（0/1 基）
+  AddressBase address_base = 5;
+}
+
+message LinkInfo {
+  LinkConfig config = 1;
+  // 由 ModbusRTU 向 DataCenter 获取/创建并返回给上位机
+  uint32 conn_id = 2;
+  LinkState state = 3;
+  string last_error = 4;
+}
+
+message UpsertLinkRequest {
+  LinkConfig config = 1;
+  // true: 若已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置
+  bool create_only = 2;
+}
+
+message GetLinkRequest {
+  string conn_name = 1;
+}
+
+message DeleteLinkRequest {
+  string conn_name = 1;
+}
+
+message StartLinkRequest {
+  string conn_name = 1;
+}
+
+message StopLinkRequest {
+  string conn_name = 1;
+}
+
+message ListLinksResponse {
+  repeated LinkInfo links = 1;
+}
+
+enum FunctionCode {
+  FUNCTION_UNSPECIFIED = 0;
+  FUNCTION_READ_COILS = 1;             // 0x01
+  FUNCTION_READ_HOLDING_REGISTERS = 2; // 0x03
+}
+
+enum DataType {
+  DATA_TYPE_UNSPECIFIED = 0;
+  DATA_TYPE_BOOL = 1;
+  DATA_TYPE_UINT16 = 2;
+}
+
+message Point {
+  string tag = 1;
+  FunctionCode function = 2;
+  uint32 address = 3;
+  DataType type = 4;
+  // 预留：标度与偏移（当前不生效）
+  double scale = 5;
+  double offset = 6;
+}
+
+message UpsertPointTableRequest {
+  string conn_name = 1;
+  repeated Point points = 2;
+  // true: 覆盖更新；false: 增量追加
+  bool replace = 3;
+}
+
+message GetPointTableRequest {
+  string conn_name = 1;
+}
+
+message PointTable {
+  string conn_name = 1;
+  repeated Point points = 2;
+}
+
+// ModbusRTU 模块对外 gRPC 服务（控制面）：用于上位机配置串口链路与点表、以及启停轮询。
+// 数据面通过 DataCenter 完成转发闭环：轮询后 Publish 点值。
+service ModbusRTUService {
+  // 创建/更新一条 ModbusRTU 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
+  // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - 校验：serial.device 必填；slave_id 范围 1..247；同一串口若参数不一致会返回 FAILED_PRECONDITION。
+  // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
+  rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
+  // 查询单条链路信息（配置 + 运行态）。
+  // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
+  rpc GetLink(GetLinkRequest) returns (LinkInfo);
+  // 列出全部链路信息（配置 + 运行态）。
+  rpc ListLinks(Empty) returns (ListLinksResponse);
+  // 删除一条链路：先停止轮询，再请求 DataCenter 删除对应连接（按 (module_name="ModbusRTU", conn_name)）。
+  // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
+  // - 幂等：DataCenter 返回 NOT_FOUND 时视为“已删除”，返回 OK。
+  rpc DeleteLink(DeleteLinkRequest) returns (Empty);
+  // 启动链路轮询（串口共享、串行访问）。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）。
+  rpc StartLink(StartLinkRequest) returns (Empty);
+  // 停止链路轮询。
+  // - 幂等：重复 StopLink 不会报错（前提是 conn_name 存在）。
+  rpc StopLink(StopLinkRequest) returns (Empty);
+
+  // 下发/更新点表（tag <-> address 映射）。
+  // - replace=true：覆盖更新；false：增量追加/更新（若 tag 与 address 冲突返回 ALREADY_EXISTS）。
+  // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
+  // - 副作用：会将“tags 列表”同步到 DataCenter 的点表（用于路由配置校验/展示）。
+  rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
+  // 获取点表（tag <-> address 映射）。
+  // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
+  rpc GetPointTable(GetPointTableRequest) returns (PointTable);
+}

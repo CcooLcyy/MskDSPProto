@@ -13,11 +13,33 @@ message ModuleVersion {
   string version = 4;
 }
 
+// 模块依赖项
+message ModuleDependency {
+  // 依赖模块名（对应 module_name）。
+  string module_name   = 1;
+  // 版本约束表达式，例如 "=0.0.1"、">=1.2.0 <2.0.0"。
+  string version_range = 2;
+}
+
+// 模块清单（由模块导出，用于描述依赖关系）。
+message ModuleManifest {
+  // 模块名（应与共享库名中的模块名一致）。
+  string module_name = 1;
+  // 模块版本信息（以 manifest 为准）。
+  ModuleVersion version = 2;
+  // 模块依赖列表。
+  repeated ModuleDependency dependencies = 3;
+}
+
 // 模块信息
 message ModuleInfo {
   string        module_name = 1;
   ModuleVersion version     = 2;
   string        lib_name    = 3;
+  // 模块依赖列表（来自 manifest）。
+  repeated ModuleDependency dependencies   = 4;
+  // manifest 解析错误（为空表示可用；非空表示不可用）。
+  string                   manifest_error  = 5;
 }
 
 // 模块信息数组
@@ -43,7 +65,8 @@ message ModuleRunningInfos {
 service ModuleManage {
   // 扫描工作目录 `./lib` 下的模块共享库并返回模块列表。
   // - 用途：上位机展示“可启动模块”列表；建议将返回结果作为 Start/Stop 的入参，避免 module_name/lib_name 不匹配。
-  // - 返回：每个模块包含 module_name、lib_name、version（从 `.so.<version>` 解析，解析失败则为空）。
+  // - 返回：每个模块包含 module_name、lib_name、version（来自 manifest）、dependencies 与 manifest_error。
+  // - 说明：manifest_error 非空时表示模块不可用，StartModule 将返回失败。
   rpc GetModuleInfo(Empty) returns (ModuleInfos) {}
   // 获取已启动模块的运行时信息。
   // - 返回：module_name/lib_name/version，以及 inner_grpc_server（unix socket）与 outer_grpc_server（TCP）。
@@ -52,9 +75,13 @@ service ModuleManage {
   // 启动指定模块：动态加载共享库，调用 create() 工厂函数创建实例，并在独立线程运行模块 start()。
   // - 入参：建议使用 GetModuleInfo 返回的 ModuleInfo；仅凭 module_name 可能无法定位到正确库文件。
   // - 副作用：模块可能创建/占用对外 gRPC 端口与 `./socket/<模块名>.sock`（模块内部 gRPC）。
+  // - 依赖：会自动按依赖拓扑顺序启动依赖模块；依赖缺失/循环/版本不满足将返回失败。
+  // - 错误码：FAILED_PRECONDITION（依赖问题/模块不可用）、NOT_FOUND（模块不存在）、INVALID_ARGUMENT（入参不合法）。
   rpc StartModule(ModuleInfo) returns (Empty) {}
   // 停止指定模块：请求模块停止、关闭其 gRPC Server、回收线程并卸载共享库。
   // - 入参：与 StartModule 一致；通常使用 GetRunningModuleInfo 返回的 module_name/lib_name。
+  // - 依赖：会级联停止依赖该模块的上游模块（反向依赖）。
+  // - 错误码：FAILED_PRECONDITION（级联停止失败）、NOT_FOUND（模块不存在）、INVALID_ARGUMENT（入参不合法）。
   rpc StopModule(ModuleInfo) returns (Empty) {}
   // 上传模块（预留）。
   // - 当前实现：no-op，仅返回 OK。
