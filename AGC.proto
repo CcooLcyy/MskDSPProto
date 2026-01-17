@@ -15,7 +15,7 @@ enum ValueMode {
 // 增量基准（仅在 mode=DELTA 时生效）
 enum DeltaBase {
   DELTA_BASE_UNSPECIFIED   = 0;
-  // 相对“上一轮输出目标值”（AGC 内部记忆）
+  // 相对“上一轮期望总目标值”（AGC 内部记忆）
   DELTA_BASE_LAST_TARGET   = 1;
   // 相对“当前量测值”（来自输入量测点）
   DELTA_BASE_CURRENT_MEAS  = 2;
@@ -145,11 +145,7 @@ message ListGroupsResponse {
 
 // AGC 模块对外 gRPC 服务（控制面）：用于上位机配置/启停 AGC 控制组（group）。
 // - 每个 group 通过 DataCenter 分配/持久化一个 conn_id，并通过 tag 与外部连接完成“命令输入/量测汇总/设定输出”的数据闭环。
-// 说明：当前代码实现仅覆盖 Ping，其余 RPC 若未实现将返回 UNIMPLEMENTED。
 service AGCService {
-  // 健康探测：返回 OK 表示服务可达。
-  rpc Ping(Empty) returns (Empty);
-
   // 创建/更新一个控制组配置，并为该 group 分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 group_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
   // - 常见错误：INVALID_ARGUMENT（配置缺失/字段非法）、FAILED_PRECONDITION（运行中不允许更新）、UNAVAILABLE（DataCenter 不可达）。

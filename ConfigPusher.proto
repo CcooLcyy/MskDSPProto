@@ -32,6 +32,34 @@ message Config {
   ModbusRtuConfig modbus_rtu = 2;
 }
 
+message DataCenterPointTable {
+  string module_name = 1;
+  string conn_name = 2;
+  repeated string tags = 3;
+  bool replace = 4;
+}
+
+message DataCenterEndpoint {
+  string module_name = 1;
+  string conn_name = 2;
+  string tag = 3;
+}
+
+message DataCenterRoute {
+  DataCenterEndpoint src = 1;
+  DataCenterEndpoint dst = 2;
+}
+
+message DataCenterRoutes {
+  repeated DataCenterRoute routes = 1;
+  bool replace = 2;
+}
+
+message DataCenterConfig {
+  repeated DataCenterPointTable point_tables = 1;
+  DataCenterRoutes routes = 2;
+}
+
 // ConfigPusher 服务：用于对外健康探测（当前仅提供 Ping），不包含配置下发 RPC。
 service ConfigPusherService {
   // 健康探测：用于检测服务可达，幂等、无副作用；常见错误为 UNAVAILABLE。
