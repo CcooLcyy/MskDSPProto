@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package COMMockProto;
+
+message Empty {}
+
+message PortConfig {
+  string name = 1;
+  string dev_path = 2;
+}
+
+message COMMockConfig {
+  repeated PortConfig ports = 1;
+}
+
+// COMMock 配置服务：用于下发虚拟串口配置并触发全量替换。
+service COMMockService {
+  // ApplyConfig：非 stream、幂等；全量替换配置，调用后会清理已创建端口并按请求重新创建。
+  // 副作用：创建/移除 dev_path 软链、打开/关闭 PTY 句柄。
+  // 主要错误码：INVALID_ARGUMENT（缺少 dev_path 或字段不合法）、FAILED_PRECONDITION（权限不足或无法创建 PTY/软链）、INTERNAL（系统调用失败）。
+  rpc ApplyConfig(COMMockConfig) returns (Empty);
+}

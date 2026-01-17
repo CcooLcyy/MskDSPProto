@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package ConfigPusherProto;
 
+import "COMMock.proto";
 import "IEC104.proto";
 import "ModbusRTU.proto";
 
@@ -30,6 +31,7 @@ message ModbusRtuConfig {
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
+  COMMockProto.COMMockConfig com_mock = 3;
 }
 
 message DataCenterPointTable {
