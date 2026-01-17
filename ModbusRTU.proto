@@ -34,6 +34,13 @@ enum LinkState {
   LINK_STATE_PENDING_DELETE = 3;
 }
 
+// 链路模式
+enum LinkMode {
+  LINK_MODE_UNSPECIFIED = 0;
+  LINK_MODE_MASTER      = 1;  // 主站轮询
+  LINK_MODE_SLAVE       = 2;  // 从站响应
+}
+
 // 串口配置
 message SerialConfig {
   // 设备路径，例如 /dev/ttyUSB0
@@ -50,12 +57,14 @@ message LinkConfig {
   // 由上位机指定的人类可读代称，要求在 ModbusRTU 模块内唯一
   string conn_name = 1;
   SerialConfig serial = 2;
-  // 从站地址（1..247）
+  // 从站地址（1..247）；主站模式作为轮询目标，从站模式作为本机地址
   uint32 slave_id = 3;
   // 轮询周期，单位毫秒（0 表示使用默认值）
   uint32 poll_interval_ms = 4;
   // 点表地址基准（0/1 基）
   AddressBase address_base = 5;
+  // 链路模式（默认主站）
+  LinkMode mode = 6;
 }
 
 message LinkInfo {
@@ -112,6 +121,11 @@ message Point {
   // 预留：标度与偏移（当前不生效）
   double scale = 5;
   double offset = 6;
+  // 从站默认值（DataCenter 无值/不可用时兜底）
+  oneof default_value {
+    bool   default_bool = 7;
+    uint32 default_uint16 = 8;
+  }
 }
 
 message UpsertPointTableRequest {
@@ -130,12 +144,12 @@ message PointTable {
   repeated Point points = 2;
 }
 
-// ModbusRTU 模块对外 gRPC 服务（控制面）：用于上位机配置串口链路与点表、以及启停轮询。
-// 数据面通过 DataCenter 完成转发闭环：轮询后 Publish 点值。
+// ModbusRTU 模块对外 gRPC 服务（控制面）：用于上位机配置串口链路与点表、以及启停轮询/从站响应。
+// 数据面通过 DataCenter 完成转发闭环：主站轮询后 Publish 点值；从站优先读取 DataCenter 最新值。
 service ModbusRTUService {
   // 创建/更新一条 ModbusRTU 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
-  // - 校验：serial.device 必填；slave_id 范围 1..247；同一串口若参数不一致会返回 FAILED_PRECONDITION。
+  // - 校验：serial.device 必填；slave_id 范围 1..247；同一串口若参数不一致或模式冲突会返回 FAILED_PRECONDITION。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
@@ -147,7 +161,7 @@ service ModbusRTUService {
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
   // - 幂等：DataCenter 返回 NOT_FOUND 时视为“已删除”，返回 OK。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
-  // 启动链路轮询（串口共享、串行访问）。
+  // 启动链路轮询/从站响应（串口共享、串行访问）。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）。
   rpc StartLink(StartLinkRequest) returns (Empty);
   // 停止链路轮询。
@@ -157,7 +171,7 @@ service ModbusRTUService {
   // 下发/更新点表（tag <-> address 映射）。
   // - replace=true：覆盖更新；false：增量追加/更新（若 tag 与 address 冲突返回 ALREADY_EXISTS）。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
-  // - 副作用：会将“tags 列表”同步到 DataCenter 的点表（用于路由配置校验/展示）。
+  // - 副作用：会将“tags 列表”同步到 DataCenter 的点表（用于路由配置校验/展示）；从站默认值仅在模块内使用。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> address 映射）。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
