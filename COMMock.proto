@@ -5,8 +5,12 @@ package COMMockProto;
 message Empty {}
 
 message PortConfig {
+  // name：端口名称，用于成对配对。
   string name = 1;
+  // dev_path：PTY 从端软链路径。
   string dev_path = 2;
+  // peer_name：配对端口名称，必须与对端互相指向。
+  string peer_name = 3;
 }
 
 message COMMockConfig {
@@ -15,8 +19,8 @@ message COMMockConfig {
 
 // COMMock 配置服务：用于下发虚拟串口配置并触发全量替换。
 service COMMockService {
-  // ApplyConfig：非 stream、幂等；全量替换配置，调用后会清理已创建端口并按请求重新创建。
-  // 副作用：创建/移除 dev_path 软链、打开/关闭 PTY 句柄。
-  // 主要错误码：INVALID_ARGUMENT（缺少 dev_path 或字段不合法）、FAILED_PRECONDITION（权限不足或无法创建 PTY/软链）、INTERNAL（系统调用失败）。
+  // ApplyConfig：非 stream、幂等；清理既有端口并按请求成对重建。
+  // 副作用：创建/移除 dev_path 软链、启动/停止 socat 进程。
+  // 主要错误码：INVALID_ARGUMENT（字段缺失/非法或配对关系不合法）、FAILED_PRECONDITION（缺少 socat 或无法创建 PTY/软链）。
   rpc ApplyConfig(COMMockConfig) returns (Empty);
 }
