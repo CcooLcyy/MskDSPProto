@@ -111,6 +111,27 @@ enum DataType {
   DATA_TYPE_UNSPECIFIED = 0;
   DATA_TYPE_BOOL = 1;
   DATA_TYPE_UINT16 = 2;
+  DATA_TYPE_UINT32 = 3;
+}
+
+// 32 位寄存器字序
+enum WordOrder {
+  option allow_alias = true;
+  WORD_ORDER_UNSPECIFIED = 0;
+  WORD_ORDER_HL = 1;  // 高字在前（地址小的寄存器为高字）
+  WORD_ORDER_LH = 2;  // 低字在前（地址小的寄存器为低字）
+  HL = 1;  // 高字在前（简写）
+  LH = 2;  // 低字在前（简写）
+}
+
+// 16 位寄存器字节序
+enum ByteOrder {
+  option allow_alias = true;
+  BYTE_ORDER_UNSPECIFIED = 0;
+  BYTE_ORDER_AB = 1;  // 高字节在前
+  BYTE_ORDER_BA = 2;  // 低字节在前
+  AB = 1;  // 高字节在前（简写）
+  BA = 2;  // 低字节在前（简写）
 }
 
 message Point {
@@ -121,12 +142,19 @@ message Point {
   // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）。
   double scale = 5;
   double offset = 6;
-  // 死区：工程量单位，仅对 UINT16 生效，<=0 表示不过滤。
+  // 死区：工程量单位，仅对 UINT16/UINT32 生效，<=0 表示不过滤。
   double deadband = 9;
+  // 保持寄存器数量（0 表示按 type 默认：UINT16=1、UINT32=2；BOOL 忽略）
+  uint32 reg_count = 10;
+  // 32 位拼接字序（仅对 UINT32 生效，0 表示 WORD_ORDER_HL）
+  WordOrder word_order = 11;
+  // 16 位字节序（仅对 UINT16/UINT32 生效，0 表示 BYTE_ORDER_AB）
+  ByteOrder byte_order = 12;
   // 从站默认值（DataCenter 无值/不可用时兜底）
   oneof default_value {
     bool   default_bool = 7;
     uint32 default_uint16 = 8;
+    uint32 default_uint32 = 13;
   }
 }
 
