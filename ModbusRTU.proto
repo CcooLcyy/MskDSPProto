@@ -118,9 +118,11 @@ message Point {
   FunctionCode function = 2;
   uint32 address = 3;
   DataType type = 4;
-  // 预留：标度与偏移（当前不生效）
+  // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）。
   double scale = 5;
   double offset = 6;
+  // 死区：工程量单位，仅对 UINT16 生效，<=0 表示不过滤。
+  double deadband = 9;
   // 从站默认值（DataCenter 无值/不可用时兜底）
   oneof default_value {
     bool   default_bool = 7;

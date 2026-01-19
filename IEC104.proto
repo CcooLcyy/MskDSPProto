@@ -104,9 +104,11 @@ message TelemetryPoint {
   string        tag    = 1;
   uint32        ioa    = 2;
   TelemetryType type   = 3;
-  // 预留：标度与偏移（当前不生效）
+  // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）。
   double scale  = 4;
   double offset = 5;
+  // 死区：工程量单位，<=0 表示不过滤。
+  double deadband = 6;
 }
 
 message UpsertPointTableRequest {
