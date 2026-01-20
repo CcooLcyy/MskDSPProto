@@ -58,6 +58,10 @@ message LinkConfig {
   bool telemetry_use_standard_limit = 10;
   // 自发遥测合包去重：默认开启；false 表示不去重（保留同 IOA 多次更新）。
   optional bool telemetry_dedupe = 11;
+
+  // 对时触发 tag：ROLE_CLIENT 订阅该 tag 的 DataCenter 更新并发送 C_CS_NA_1。
+  // 为空时默认使用 "__time_sync__"；用于通过路由触发对时，不影响点表 IOA 映射。
+  string time_sync_tag = 12;
 }
 
 message LinkInfo {
@@ -94,26 +98,30 @@ message ListLinksResponse {
   repeated LinkInfo links = 1;
 }
 
-enum TelemetryType {
-  TELEMETRY_TYPE_UNSPECIFIED = 0;
-  // M_ME_NC_1: short float
-  TELEMETRY_TYPE_FLOAT       = 1;
+enum PointType {
+  POINT_TYPE_UNSPECIFIED = 0;
+  // M_ME_NC_1/M_ME_TF_1: short float
+  POINT_TYPE_FLOAT       = 1;
+  // M_SP_NA_1/M_SP_TB_1: single point
+  POINT_TYPE_SINGLE      = 2;
 }
 
-message TelemetryPoint {
-  string        tag    = 1;
-  uint32        ioa    = 2;
-  TelemetryType type   = 3;
+message Point {
+  string    tag  = 1;
+  uint32    ioa  = 2;
+  PointType type = 3;
   // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）。
+  // 仅对 POINT_TYPE_FLOAT 生效；POINT_TYPE_SINGLE 忽略该字段。
   double scale  = 4;
   double offset = 5;
   // 死区：工程量单位，<=0 表示不过滤。
+  // 仅对 POINT_TYPE_FLOAT 生效；POINT_TYPE_SINGLE 忽略该字段。
   double deadband = 6;
 }
 
 message UpsertPointTableRequest {
   string conn_name = 1;
-  repeated TelemetryPoint points = 2;
+  repeated Point points = 2;
   // true: 覆盖更新；false: 增量追加
   bool replace = 3;
 }
@@ -124,11 +132,18 @@ message GetPointTableRequest {
 
 message PointTable {
   string conn_name = 1;
-  repeated TelemetryPoint points = 2;
+  repeated Point points = 2;
+}
+
+message SendTimeSyncRequest {
+  // 连接名：要发送对时命令的链路（ROLE_CLIENT 作为控制站）。
+  string conn_name = 1;
+  // 毫秒时间戳；<=0 表示使用当前本地时间。
+  int64 ts_ms = 2;
 }
 
 // IEC104 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停链路。
-// 数据面通过 DataCenter 完成转发闭环：Client 收到遥测后 Publish，Server 通过 Subscribe/GetLatest 上送与总召。
+// 数据面通过 DataCenter 完成转发闭环：Client 收到点值后 Publish，Server 通过 Subscribe/GetLatest 上送与总召。
 service IEC104Service {
   // 创建/更新一条 IEC104 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
@@ -146,7 +161,7 @@ service IEC104Service {
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
   // 启动链路的 TCP 监听/连接。
   // - ROLE_SERVER：启动后会订阅 DataCenter（conn_id + 点表 tags），将点值更新转为 IEC104 遥测自发上送。
-  // - ROLE_CLIENT：启动后收到遥测会按点表映射为 tag，并 Publish 到 DataCenter。
+  // - ROLE_CLIENT：启动后收到点值会按点表映射为 tag，并 Publish 到 DataCenter。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）。
   rpc StartLink(StartLinkRequest) returns (Empty);
   // 停止链路的 TCP 监听/连接，并停止与 DataCenter 的订阅交互（若有）。
@@ -161,4 +176,10 @@ service IEC104Service {
   // 获取点表（tag <-> IOA 映射）。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
   rpc GetPointTable(GetPointTableRequest) returns (PointTable);
+
+  // 主动发送对时命令 C_CS_NA_1（仅 ROLE_CLIENT）。
+  // - ts_ms<=0：使用当前本地时间。
+  // - 常见错误：NOT_FOUND（conn_name 不存在）、FAILED_PRECONDITION（链路未运行/角色不允许）。
+  // - 副作用：发送对时命令到 IEC104 链路，并记录日志。
+  rpc SendTimeSync(SendTimeSyncRequest) returns (Empty);
 }
