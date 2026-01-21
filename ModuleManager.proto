@@ -63,7 +63,7 @@ message ModuleRunningInfos {
 // 模块管理服务：用于上位机发现模块、启动/停止模块、查询运行时 gRPC 地址等。
 // 说明：当前实现大多返回 OK（失败场景主要通过日志或回读查询验证），后续可扩展为返回明确错误码。
 service ModuleManage {
-  // 扫描工作目录 `./lib` 下的模块共享库并返回模块列表。
+  // 扫描工作目录 `./module` 下的模块共享库并返回模块列表。
   // - 用途：上位机展示“可启动模块”列表；建议将返回结果作为 Start/Stop 的入参，避免 module_name/lib_name 不匹配。
   // - 返回：每个模块包含 module_name、lib_name、version（来自 manifest）、dependencies 与 manifest_error。
   // - 说明：manifest_error 非空时表示模块不可用，StartModule 将返回失败。
