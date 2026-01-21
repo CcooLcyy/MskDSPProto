@@ -11,6 +11,12 @@ enum Role {
   ROLE_CLIENT      = 2;
 }
 
+enum StationRole {
+  STATION_ROLE_UNSPECIFIED = 0;
+  STATION_ROLE_MASTER      = 1;
+  STATION_ROLE_SLAVE       = 2;
+}
+
 enum LinkState {
   LINK_STATE_UNSPECIFIED   = 0;
   LINK_STATE_STOPPED       = 1;
@@ -37,6 +43,7 @@ message APCIParameters {
 message LinkConfig {
   // 由上位机指定的人类可读代称，要求在 IEC104 模块内唯一
   string conn_name = 1;
+  // 传输角色：SERVER 监听、CLIENT 连接（仅影响 TCP 行为）。
   Role   role      = 2;
 
   // SERVER: local 为监听地址；CLIENT: 可选本地绑定地址（留空表示由系统选择）
@@ -59,9 +66,12 @@ message LinkConfig {
   // 自发遥测合包去重：默认开启；false 表示不去重（保留同 IOA 多次更新）。
   optional bool telemetry_dedupe = 11;
 
-  // 对时触发 tag：ROLE_CLIENT 订阅该 tag 的 DataCenter 更新并发送 C_CS_NA_1。
+  // 对时触发 tag：STATION_ROLE_MASTER 订阅该 tag 的 DataCenter 更新并发送 C_CS_NA_1。
   // 为空时默认使用 "__time_sync__"；用于通过路由触发对时，不影响点表 IOA 映射。
   string time_sync_tag = 12;
+
+  // 站点角色：主站/从站，决定业务语义；为空时默认：ROLE_CLIENT->MASTER，ROLE_SERVER->SLAVE。
+  StationRole station_role = 13;
 }
 
 message LinkInfo {
@@ -136,18 +146,18 @@ message PointTable {
 }
 
 message SendTimeSyncRequest {
-  // 连接名：要发送对时命令的链路（ROLE_CLIENT 作为控制站）。
+  // 连接名：要发送对时命令的链路（STATION_ROLE_MASTER 作为控制站）。
   string conn_name = 1;
   // 毫秒时间戳；<=0 表示使用当前本地时间。
   int64 ts_ms = 2;
 }
 
 // IEC104 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停链路。
-// 数据面通过 DataCenter 完成转发闭环：Client 收到点值后 Publish，Server 通过 Subscribe/GetLatest 上送与总召。
+// 数据面通过 DataCenter 完成转发闭环：STATION_ROLE_MASTER 收到点值后 Publish，STATION_ROLE_SLAVE 通过 Subscribe/GetLatest 上送与总召。
 service IEC104Service {
   // 创建/更新一条 IEC104 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
-  // - ROLE_SERVER：会校验 local.port，并进行端口冲突/占用检查；ROLE_CLIENT：会校验 remote.ip/remote.port。
+  // - role=ROLE_SERVER：会校验 local.port，并进行端口冲突/占用检查；role=ROLE_CLIENT：会校验 remote.ip/remote.port。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
@@ -160,8 +170,8 @@ service IEC104Service {
   // - 幂等：DataCenter 返回 NOT_FOUND 时视为“已删除”，返回 OK。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
   // 启动链路的 TCP 监听/连接。
-  // - ROLE_SERVER：启动后会订阅 DataCenter（conn_id + 点表 tags），将点值更新转为 IEC104 遥测自发上送。
-  // - ROLE_CLIENT：启动后收到点值会按点表映射为 tag，并 Publish 到 DataCenter。
+  // - STATION_ROLE_SLAVE：启动后会订阅 DataCenter（conn_id + 点表 tags），将点值更新转为 IEC104 遥测自发上送。
+  // - STATION_ROLE_MASTER：启动后收到点值会按点表映射为 tag，并 Publish 到 DataCenter。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）。
   rpc StartLink(StartLinkRequest) returns (Empty);
   // 停止链路的 TCP 监听/连接，并停止与 DataCenter 的订阅交互（若有）。
@@ -177,7 +187,7 @@ service IEC104Service {
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
   rpc GetPointTable(GetPointTableRequest) returns (PointTable);
 
-  // 主动发送对时命令 C_CS_NA_1（仅 ROLE_CLIENT）。
+  // 主动发送对时命令 C_CS_NA_1（仅 STATION_ROLE_MASTER）。
   // - ts_ms<=0：使用当前本地时间。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、FAILED_PRECONDITION（链路未运行/角色不允许）。
   // - 副作用：发送对时命令到 IEC104 链路，并记录日志。
