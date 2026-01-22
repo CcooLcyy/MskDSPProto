@@ -57,14 +57,14 @@ message LinkConfig {
 
   APCIParameters apci = 7;
 
-  // 自发遥测合包窗口（毫秒）；<=0 使用默认值。
-  uint32 telemetry_batch_window_ms = 8;
-  // 遥测 ASDU 单帧最大字节数（<=249）；0 使用默认值。
-  uint32 telemetry_max_asdu_bytes = 9;
-  // true: 强制使用 IEC104 标准上限（249 字节），忽略 telemetry_max_asdu_bytes。
-  bool telemetry_use_standard_limit = 10;
-  // 自发遥测合包去重：默认开启；false 表示不去重（保留同 IOA 多次更新）。
-  optional bool telemetry_dedupe = 11;
+  // 自发点值合包窗口（毫秒）；<=0 使用默认值。
+  uint32 point_batch_window_ms = 8;
+  // 点值 ASDU 单帧最大字节数（<=249）；0 使用默认值。
+  uint32 point_max_asdu_bytes = 9;
+  // true: 强制使用 IEC104 标准上限（249 字节），忽略 point_max_asdu_bytes。
+  bool point_use_standard_limit = 10;
+  // 自发点值合包去重：默认开启；false 表示不去重（保留同 IOA 多次更新）。
+  optional bool point_dedupe = 11;
 
   // 对时触发 tag：STATION_ROLE_MASTER 订阅该 tag 的 DataCenter 更新并发送 C_CS_NA_1。
   // 为空时默认使用 "__time_sync__"；用于通过路由触发对时，不影响点表 IOA 映射。
@@ -72,6 +72,9 @@ message LinkConfig {
 
   // 站点角色：主站/从站，决定业务语义；为空时默认：ROLE_CLIENT->MASTER，ROLE_SERVER->SLAVE。
   StationRole station_role = 13;
+
+  // 点值上送是否带时标：false=不带时标（默认），true=带时标。
+  bool point_with_time = 14;
 }
 
 message LinkInfo {
