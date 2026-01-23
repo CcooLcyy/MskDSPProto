@@ -8,7 +8,6 @@ set_target_properties(dspProto PROPERTIES
 target_link_libraries(dspProto PUBLIC
   gRPC::grpc++
   protobuf::libprotobuf
-  gRPC::grpc++_reflection
 )
 target_link_options(dspProto INTERFACE
   $<$<PLATFORM_ID:Linux>:-Wl,--no-as-needed>
