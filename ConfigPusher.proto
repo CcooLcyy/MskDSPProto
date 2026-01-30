@@ -3,6 +3,7 @@ syntax = "proto3";
 package ConfigPusherProto;
 
 import "COMMock.proto";
+import "DLT645.proto";
 import "IEC104.proto";
 import "ModbusRTU.proto";
 
@@ -28,10 +29,22 @@ message ModbusRtuConfig {
   repeated ModbusRtuLinkTask links = 1;
 }
 
+message Dlt645LinkTask {
+  DLT645Proto.UpsertLinkRequest link = 1;
+  DLT645Proto.UpsertPointTableRequest point_table = 2;
+  bool start = 3;
+}
+
+message Dlt645Config {
+  DLT645Proto.MqttConfig mqtt = 1;
+  repeated Dlt645LinkTask links = 2;
+}
+
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
   COMMockProto.COMMockConfig com_mock = 3;
+  Dlt645Config dlt645 = 4;
 }
 
 message DataCenterPointTable {
