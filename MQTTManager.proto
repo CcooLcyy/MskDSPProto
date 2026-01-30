@@ -2,73 +2,47 @@ syntax = "proto3";
 
 package MQTTManagerProto;
 
-// MQTTManager 服务：用于通过脚本编解码接入 MQTT，并提供发布/订阅与配置管理能力。
+// MQTTManager 服务：提供通用 MQTT 连接与请求-响应能力，消息负载透传。
 service MQTTManagerService {
-  // 发布消息：业务模块调用，使用指定配置的脚本进行编码，生成报文负载并发送到 MQTT。
+  // 发布消息：业务模块调用，直接发布 payload 到指定主题。
   // 语义：产生外发报文副作用；幂等性取决于业务与 MQTT 代理服务器；非流式。
-  // 常见错误：INVALID_ARGUMENT（配置标识/主题为空或字段数据为空）、NOT_FOUND（配置标识不存在）、
-  // FAILED_PRECONDITION（配置未就绪）、UNIMPLEMENTED（发布尚未启用）、INTERNAL（脚本执行失败）。
+  // 常见错误：INVALID_ARGUMENT（连接参数/主题/负载为空）、FAILED_PRECONDITION（连接失败）、
+  // INTERNAL（发布失败）。
   rpc Publish(PublishRequest) returns (PublishResponse);
 
-  // 订阅消息：业务模块调用，建立服务端流，MQTTManager 按请求订阅并解码后推送。
+  // 订阅消息：业务模块调用，建立服务端流，按主题过滤推送收到的 MQTT 原始消息。
   // 语义：服务端流；客户端取消或服务端异常时结束；无落盘副作用。
-  // 常见错误：INVALID_ARGUMENT（配置标识为空或主题列表为空）、NOT_FOUND（配置标识不存在）、
-  // FAILED_PRECONDITION（配置未就绪）、UNIMPLEMENTED（订阅尚未启用）、INTERNAL（脚本执行失败）。
+  // 常见错误：INVALID_ARGUMENT（连接参数为空或主题列表为空）、FAILED_PRECONDITION（连接失败）、
+  // INTERNAL（订阅失败）。
   rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
 
-  // 更新配置：configPusher 下发连接与脚本配置，成功后替换当前生效配置。
-  // 语义：非幂等；可能触发重建连接/订阅；无流式。
-  // 常见错误：INVALID_ARGUMENT（脚本缺失/语法错误/字段不合法）、INTERNAL（读取脚本文件失败）。
-  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
-
-  // 查询状态：返回当前配置摘要与脚本来源；幂等、无副作用。
-  // 常见错误：FAILED_PRECONDITION（尚未加载配置）。
-  rpc GetStatus(GetStatusRequest) returns (GetStatusResponse);
+  // 请求并等待响应：业务模块调用，MQTTManager 透传 JSON payload 并按字段匹配响应。
+  // 语义：产生外发报文副作用；内部维护超时与重试；非流式。
+  // 常见错误：INVALID_ARGUMENT（连接参数/主题/负载为空、JSON 无效或匹配字段无效）、
+  // ALREADY_EXISTS（匹配条件冲突）、DEADLINE_EXCEEDED（等待超时）、
+  // FAILED_PRECONDITION（连接失败）、INTERNAL（发布/订阅失败）。
+  rpc RequestAndWait(RequestAndWaitRequest) returns (RequestAndWaitResponse);
 }
 
-// 脚本配置：内联脚本优先于脚本文件路径。
-message ScriptConfig {
-  string inline_script = 1;
-  string file_path = 2;
-  string decode_entry = 3;
-  string encode_entry = 4;
+// 连接参数：由业务模块透传提供，MQTTManager 按 host:port 维持连接。
+message ConnectionInfo {
+  string host = 1;
+  uint32 port = 2;
+  string client_id = 3;
+  string username = 4;
+  string password = 5;
+  uint32 keepalive_sec = 6;
+  bool clean_session = 7;
+  uint32 connect_timeout_ms = 8;
 }
 
-// 连接配置。
-message ConnectionConfig {
-  string broker_uri = 1;
-  string client_id = 2;
-  string username = 3;
-  string password = 4;
-  uint32 keepalive_sec = 5;
-  bool clean_session = 6;
-}
-
-// 配置项：每个配置项表示一套主站连接与脚本配置。
-message ProfileConfig {
-  string profile_id = 1;
-  ConnectionConfig connection = 2;
-  ScriptConfig script = 3;
-}
-
-// 更新配置请求。
-message UpdateConfigRequest {
-  repeated ProfileConfig profiles = 1;
-}
-
-// 更新配置响应。
-message UpdateConfigResponse {
-  bool ok = 1;
-  string message = 2;
-}
-
-// 发布请求：data 为结构化字段，由脚本编码生成报文负载。
+// 发布请求。
 message PublishRequest {
-  string profile_id = 1;
+  ConnectionInfo connection = 1;
   string topic = 2;
   uint32 qos = 3;
   bool retain = 4;
-  map<string, string> data = 5;
+  bytes payload = 5;
 }
 
 // 发布响应。
@@ -85,33 +59,40 @@ message TopicFilter {
 
 // 订阅请求：主题列表为空则返回 INVALID_ARGUMENT。
 message SubscribeRequest {
-  string profile_id = 1;
+  ConnectionInfo connection = 1;
   repeated TopicFilter topics = 2;
 }
 
-// 订阅响应：data 为脚本解码输出的结构化字段。
+// 订阅响应：payload 为 MQTT 原始负载。
 message SubscribeResponse {
   string topic = 1;
-  map<string, string> data = 2;
+  bytes payload = 2;
   uint64 recv_time_ms = 3;
 }
 
-// 配置项状态。
-message ProfileStatus {
-  string profile_id = 1;
-  bool config_ready = 2;
-  string script_source = 3;
-  string decode_entry = 4;
-  string encode_entry = 5;
-  string last_error = 6;
+// 请求并等待响应请求。
+message RequestAndWaitRequest {
+  ConnectionInfo connection = 1;
+  string request_topic = 2;
+  string response_topic = 3;
+  bytes payload = 4;
+  uint32 qos = 5;
+  bool retain = 6;
+  uint32 timeout_ms = 7;
+  uint32 retry_times = 8;
+  uint32 retry_interval_ms = 9;
+  // 请求标识：仅用于返回/日志，不参与 MQTT 匹配。
+  string request_id = 10;
+  // JSON 字段匹配路径：用于在响应 payload 中定位匹配字段（如 data.id 或 data.items[0].id）。
+  string match_field = 11;
 }
 
-// 状态查询请求。
-message GetStatusRequest {}
-
-// 状态查询响应。
-message GetStatusResponse {
+// 请求并等待响应响应。
+message RequestAndWaitResponse {
   bool ok = 1;
   string message = 2;
-  repeated ProfileStatus profiles = 3;
+  string request_id = 3;
+  bytes payload = 4;
+  string response_topic = 5;
+  uint64 recv_time_ms = 6;
 }
