@@ -133,7 +133,8 @@ message ListLinksResponse {
 // 点位定义
 message Point {
   string tag = 1;
-  // 4 字节数据标识，8 位十六进制字符串
+  // 4 字节数据标识，8 位十六进制字符串；配置为高字节在前。
+  // 模块发送时按字节逆序；PCD 会在 DI 后追加 device_no。
   string di = 2;
   // 数据域字节数（不含 DI 与设备序号）
   uint32 data_len = 3;
