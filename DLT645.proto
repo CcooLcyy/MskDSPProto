@@ -147,11 +147,39 @@ message Point {
   double deadband = 8;
 }
 
+// 数据块子项定义（按表格顺序拼接，不包含 DI）
+message BlockItem {
+  string tag = 1;
+  // 数据域字节数
+  uint32 data_len = 2;
+  DataType type = 3;
+  AccessMode access = 4;
+  // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）
+  double scale = 5;
+  double offset = 6;
+  // 死区：工程量单位，<=0 表示不过滤
+  double deadband = 7;
+  // ASCII 字段右侧空格裁剪（未设置时默认裁剪）
+  optional bool trim_right_space = 8;
+}
+
+// 数据块定义（一个 DI 对应多个子项）
+message Block {
+  // 数据块 DI，8 位十六进制字符串；配置为高字节在前。
+  // 模块发送时按字节逆序；PCD 会在 DI 后追加 device_no。
+  string block_di = 1;
+  // 数据域总字节数（不含 DI 与设备序号）
+  uint32 block_data_len = 2;
+  repeated BlockItem items = 3;
+}
+
 message UpsertPointTableRequest {
   string conn_name = 1;
   repeated Point points = 2;
   // true: 覆盖更新；false: 增量追加
   bool replace = 3;
+  // 数据块定义：读请求按数据块 DI 发送，响应按 items 顺序拆分发布
+  repeated Block blocks = 4;
 }
 
 message GetPointTableRequest {
@@ -161,6 +189,7 @@ message GetPointTableRequest {
 message PointTable {
   string conn_name = 1;
   repeated Point points = 2;
+  repeated Block blocks = 3;
 }
 
 // DLT645 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停通信任务。
@@ -186,6 +215,7 @@ service DLT645Service {
   rpc StopLink(StopLinkRequest) returns (Empty);
   // 下发/更新点表（tag <-> di 映射）。
   // - replace=true：覆盖更新；false：增量追加（若 tag/di 冲突返回 ALREADY_EXISTS）。
+  // - 数据块：按 block_di 读整块，再按 items 顺序拆分发布。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> di 映射）。
