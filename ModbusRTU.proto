@@ -41,6 +41,31 @@ enum LinkMode {
   LINK_MODE_SLAVE       = 2;  // 从站响应
 }
 
+// 主站抄读方案
+enum ReadPlanMode {
+  READ_PLAN_MODE_UNSPECIFIED = 0;
+  READ_PLAN_MODE_POINT       = 1;  // 按点逐条抄读（默认）
+  READ_PLAN_MODE_EXPLICIT    = 2;  // 按配置区间抄读
+}
+
+// 主站显式抄读区间
+message ReadBlock {
+  // 功能码（目前仅支持 0x03 读保持寄存器）
+  FunctionCode function = 1;
+  // 起始地址（遵循 address_base）
+  uint32 start = 2;
+  // 连续数量（保持寄存器数量）
+  uint32 quantity = 3;
+}
+
+// 主站抄读配置
+message ReadPlan {
+  // 抄读模式：POINT=逐点；EXPLICIT=按区间
+  ReadPlanMode mode = 1;
+  // 显式区间列表（mode=EXPLICIT 时必填）
+  repeated ReadBlock blocks = 2;
+}
+
 // 串口配置
 message SerialConfig {
   // 设备路径，例如 /dev/ttyUSB0
@@ -65,6 +90,8 @@ message LinkConfig {
   AddressBase address_base = 5;
   // 链路模式（默认主站）
   LinkMode mode = 6;
+  // 主站抄读方案（仅主站模式生效）
+  ReadPlan read_plan = 7;
 }
 
 message LinkInfo {
