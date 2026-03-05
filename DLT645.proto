@@ -30,6 +30,21 @@ enum CommMode {
   COMM_MODE_LORA = 3;    // Lora
 }
 
+// 串口奇偶校验
+enum SerialParity {
+  SERIAL_PARITY_UNSPECIFIED = 0;
+  SERIAL_PARITY_NONE = 1;
+  SERIAL_PARITY_ODD = 2;
+  SERIAL_PARITY_EVEN = 3;
+}
+
+// 串口停止位
+enum SerialStopBits {
+  SERIAL_STOP_BITS_UNSPECIFIED = 0;
+  SERIAL_STOP_BITS_ONE = 1;
+  SERIAL_STOP_BITS_TWO = 2;
+}
+
 // 链路状态
 enum LinkState {
   LINK_STATE_UNSPECIFIED = 0;
@@ -84,6 +99,22 @@ message LinkConfig {
   uint32 poll_interval_ms = 7;
   // 请求超时，单位毫秒（0 表示使用默认值）
   uint32 request_timeout_ms = 8;
+  // 串口标识（COMM_MODE_SERIAL 时必填，例如 RS485-1）
+  string serial_port = 9;
+  // 串口波特率（COMM_MODE_SERIAL，0 使用默认值）
+  uint32 serial_baud_rate = 10;
+  // 串口数据位（COMM_MODE_SERIAL，0 使用默认值）
+  uint32 serial_data_bits = 11;
+  // 串口奇偶校验（COMM_MODE_SERIAL，0 使用默认值）
+  SerialParity serial_parity = 12;
+  // 串口停止位（COMM_MODE_SERIAL，0 使用默认值）
+  SerialStopBits serial_stop_bits = 13;
+  // 字节超时（COMM_MODE_SERIAL，单位毫秒，0 使用默认值）
+  uint32 serial_byte_timeout_ms = 14;
+  // 帧超时（COMM_MODE_SERIAL，单位毫秒，0 使用默认值）
+  uint32 serial_frame_timeout_ms = 15;
+  // 预估最大接收字节（COMM_MODE_SERIAL，0 使用默认值）
+  uint32 serial_est_size = 16;
 }
 
 message LinkInfo {
@@ -199,7 +230,7 @@ service DLT645Service {
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   // 创建/更新一条 DLT645 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在返回 ALREADY_EXISTS。
-  // - 常见错误：INVALID_ARGUMENT（字段缺失）、FAILED_PRECONDITION（全局 MQTT 未配置）。
+  // - 常见错误：INVALID_ARGUMENT（字段缺失/串口模式未提供 serial_port）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
   // 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
