@@ -6,6 +6,7 @@ import "COMMock.proto";
 import "DLT645.proto";
 import "IEC104.proto";
 import "ModbusRTU.proto";
+import "AGC.proto";
 
 message Empty {}
 
@@ -33,6 +34,12 @@ message Dlt645LinkTask {
   DLT645Proto.UpsertLinkRequest link = 1;
   DLT645Proto.UpsertPointTableRequest point_table = 2;
   bool start = 3;
+  // 可选：批量设备序号。配置后会按 device_no 展开为多条 DLT645 链路任务。
+  // 约束：
+  // 1) 仅用于 DLT645PCD；
+  // 2) 每项需为 2 位十六进制字符串（例如 01、0A）；
+  // 3) link.config.conn_name 建议包含 {device_no} 占位符，未包含时会自动追加后缀 _{device_no}。
+  repeated string device_nos = 4;
 }
 
 message Dlt645Config {
@@ -40,11 +47,24 @@ message Dlt645Config {
   repeated Dlt645LinkTask links = 2;
 }
 
+// AGC 控制组下发任务
+message AgcGroupTask {
+  AGCProto.UpsertGroupRequest upsert = 1;
+  // true 表示下发配置后调用 StartGroup 启动该控制组内控制环功能
+  bool start = 2;
+}
+
+// AGC 配置集合
+message AgcConfig {
+  repeated AgcGroupTask groups = 1;
+}
+
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
   COMMockProto.COMMockConfig com_mock = 3;
   Dlt645Config dlt645 = 4;
+  AgcConfig agc = 5;
 }
 
 message DataCenterPointTable {
