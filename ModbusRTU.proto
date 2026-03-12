@@ -20,6 +20,15 @@ enum StopBits {
   STOP_BITS_TWO         = 2;
 }
 
+// 传输类型
+enum TransportType {
+  option allow_alias = true;
+  TRANSPORT_UNSPECIFIED = 0;
+  TRANSPORT_SERIAL = 1;     // 本地串口直连
+  TRANSPORT_MQTT_UART = 2;  // 通过 MQTTManager + uartManager 透传串口
+  TRANSPORT_MQTT = 2;       // 兼容简写
+}
+
 // 点表地址基准
 enum AddressBase {
   ADDRESS_BASE_UNSPECIFIED = 0;
@@ -68,19 +77,34 @@ message ReadPlan {
 
 // 串口配置
 message SerialConfig {
-  // 设备路径，例如 /dev/ttyUSB0
+  // 设备路径，例如 /dev/ttyUSB0；仅 TRANSPORT_SERIAL 生效。
   string device = 1;
   uint32 baud_rate = 2;
   uint32 data_bits = 3;
   Parity parity = 4;
   StopBits stop_bits = 5;
-  // 读超时，单位毫秒（0 表示使用默认值）
+  // 读超时，单位毫秒（0 表示使用默认值）；仅 TRANSPORT_SERIAL 生效。
   uint32 read_timeout_ms = 6;
+}
+
+// MQTT 连接参数（ModbusRTU 模块内部使用）。
+message MqttConfig {
+  string host = 1;
+  uint32 port = 2;
+  string client_id = 3;
+  string username = 4;
+  string password = 5;
+  uint32 keepalive_sec = 6;
+  bool clean_session = 7;
+  uint32 connect_timeout_ms = 8;
 }
 
 message LinkConfig {
   // 由上位机指定的人类可读代称，要求在 ModbusRTU 模块内唯一
   string conn_name = 1;
+  // 串口参数：
+  // - TRANSPORT_SERIAL：表示本地串口 device + 串口参数；
+  // - TRANSPORT_MQTT_UART：表示远端 uartManager 串口参数（device 忽略）。
   SerialConfig serial = 2;
   // 从站地址（1..247）；主站模式作为轮询目标，从站模式作为本机地址
   uint32 slave_id = 3;
@@ -92,6 +116,18 @@ message LinkConfig {
   LinkMode mode = 6;
   // 主站抄读方案（仅主站模式生效）
   ReadPlan read_plan = 7;
+  // 传输类型（默认 TRANSPORT_SERIAL）
+  TransportType transport_type = 8;
+  // 远端串口标识（TRANSPORT_MQTT_UART 必填，例如 RS485-1）
+  string serial_port = 9;
+  // 单次请求超时，单位毫秒（TRANSPORT_MQTT_UART；0 表示使用默认值）
+  uint32 request_timeout_ms = 10;
+  // 字节超时，单位毫秒（TRANSPORT_MQTT_UART，对应 uartManager byteTimeout）
+  uint32 serial_byte_timeout_ms = 11;
+  // 帧超时，单位毫秒（TRANSPORT_MQTT_UART，对应 uartManager frameTimeout）
+  uint32 serial_frame_timeout_ms = 12;
+  // 预估最大接收字节（TRANSPORT_MQTT_UART，对应 uartManager estSize）
+  uint32 serial_est_size = 13;
 }
 
 message LinkInfo {
@@ -100,6 +136,16 @@ message LinkInfo {
   uint32 conn_id = 2;
   LinkState state = 3;
   string last_error = 4;
+}
+
+// 更新全局配置（当前用于 MQTT 连接）
+message UpdateConfigRequest {
+  MqttConfig mqtt = 1;
+}
+
+message UpdateConfigResponse {
+  bool ok = 1;
+  string message = 2;
 }
 
 message UpsertLinkRequest {
@@ -204,9 +250,16 @@ message PointTable {
 // ModbusRTU 模块对外 gRPC 服务（控制面）：用于上位机配置串口链路与点表、以及启停轮询/从站响应。
 // 数据面通过 DataCenter 完成转发闭环：主站轮询后 Publish 点值；从站优先读取 DataCenter 最新值。
 service ModbusRTUService {
+  // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
+  // - 仅 TRANSPORT_MQTT_UART 链路在启动连接功能时使用。
+  // - 常见错误：INVALID_ARGUMENT（连接参数为空/不完整）。
+  rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   // 创建/更新一条 ModbusRTU 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
-  // - 校验：serial.device 必填；slave_id 范围 1..247；同一串口若参数不一致或模式冲突会返回 FAILED_PRECONDITION。
+  // - 校验：
+  //   1) TRANSPORT_SERIAL：serial.device 必填；
+  //   2) TRANSPORT_MQTT_UART：serial_port 必填，当前仅支持主站模式；
+  //   3) slave_id 范围 1..247；同一串口/远端串口若参数不一致或模式冲突会返回 FAILED_PRECONDITION。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
@@ -218,8 +271,10 @@ service ModbusRTUService {
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
   // - 幂等：DataCenter 返回 NOT_FOUND 时视为“已删除”，返回 OK。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
-  // 启动链路轮询/从站响应（串口共享、串行访问）。
-  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）。
+  // 启动链路轮询/从站响应。
+  // - TRANSPORT_SERIAL：支持主站轮询/从站响应，共享串口串行访问。
+  // - TRANSPORT_MQTT_UART：当前仅支持主站轮询，通过 MQTTManager + uartManager 透传 RTU 原始帧。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）、UNIMPLEMENTED（暂不支持的传输/模式组合）。
   rpc StartLink(StartLinkRequest) returns (Empty);
   // 停止链路轮询。
   // - 幂等：重复 StopLink 不会报错（前提是 conn_name 存在）。

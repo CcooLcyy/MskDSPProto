@@ -21,13 +21,25 @@ message Iec104Config {
 }
 
 message ModbusRtuLinkTask {
+  // 链路配置任务：创建/更新 ModbusRTU 链路。
   ModbusRTUProto.UpsertLinkRequest link = 1;
+  // 对应链路点表；conn_name 为空时默认使用 link.config.conn_name。
   ModbusRTUProto.UpsertPointTableRequest point_table = 2;
+  // true 表示下发完成后调用 StartLink 启动该链路的通信功能。
   bool start = 3;
 }
 
 message ModbusRtuConfig {
+  // ModbusRTU 链路任务列表。
   repeated ModbusRtuLinkTask links = 1;
+  // 可选：ModbusRTU MQTT 全局连接参数。
+  // 使用场景：
+  // 1) 当任一链路配置为 TRANSPORT_MQTT_UART 时必填；
+  // 2) ConfigPusher 会先调用 ModbusRTU.UpdateConfig 下发该配置，再继续下发链路/点表。
+  // 注意：
+  // 1) 该配置不会替代 TRANSPORT_SERIAL，本地串口直连能力仍然保留；
+  // 2) TRANSPORT_MQTT_UART 当前仅支持主站模式。
+  ModbusRTUProto.MqttConfig mqtt = 2;
 }
 
 message Dlt645LinkTask {
