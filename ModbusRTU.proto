@@ -59,11 +59,11 @@ enum ReadPlanMode {
 
 // 主站显式抄读区间
 message ReadBlock {
-  // 功能码（目前仅支持 0x03 读保持寄存器）
+  // 功能码（目前支持 0x03 读保持寄存器、0x04 读输入寄存器）
   FunctionCode function = 1;
   // 起始地址（遵循 address_base）
   uint32 start = 2;
-  // 连续数量（保持寄存器数量）
+  // 连续数量（寄存器数量）
   uint32 quantity = 3;
 }
 
@@ -178,6 +178,9 @@ enum FunctionCode {
   FUNCTION_UNSPECIFIED = 0;
   FUNCTION_READ_COILS = 1;             // 0x01
   FUNCTION_READ_HOLDING_REGISTERS = 2; // 0x03
+  FUNCTION_READ_INPUT_REGISTERS = 3;   // 0x04
+  FUNCTION_WRITE_SINGLE_REGISTER = 4;  // 0x06
+  FUNCTION_WRITE_MULTIPLE_REGISTERS = 5; // 0x10
 }
 
 enum DataType {
@@ -185,6 +188,8 @@ enum DataType {
   DATA_TYPE_BOOL = 1;
   DATA_TYPE_UINT16 = 2;
   DATA_TYPE_UINT32 = 3;
+  DATA_TYPE_INT16 = 4;
+  DATA_TYPE_INT32 = 5;
 }
 
 // 32 位寄存器字序
@@ -211,17 +216,22 @@ message Point {
   string tag = 1;
   FunctionCode function = 2;
   uint32 address = 3;
+  // 当前 INT16/INT32 仅主站寄存器功能码支持（0x03/0x04/0x10）；从站暂不支持。
+  // 其中 0x06 仅允许 UINT16/INT16。
   DataType type = 4;
-  // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）。
+  // 标度与偏移：
+  // - 读寄存器：工程量换算 value = raw * scale + offset；
+  // - 写寄存器：反向换算 raw = (value - offset) / scale；
+  // - scale=0 视为 1。
   double scale = 5;
   double offset = 6;
-  // 死区：工程量单位，仅对 UINT16/UINT32 生效，<=0 表示不过滤。
+  // 死区：工程量单位，仅对 UINT16/UINT32/INT16/INT32 生效，<=0 表示不过滤。
   double deadband = 9;
-  // 保持寄存器数量（0 表示按 type 默认：UINT16=1、UINT32=2；BOOL 忽略）
+  // 寄存器数量（0 表示按 type 默认：UINT16/INT16=1、UINT32/INT32=2；BOOL 忽略）
   uint32 reg_count = 10;
-  // 32 位拼接字序（仅对 UINT32 生效，0 表示 WORD_ORDER_HL）
+  // 32 位拼接字序（仅对 UINT32/INT32 生效，0 表示 WORD_ORDER_HL）
   WordOrder word_order = 11;
-  // 16 位字节序（仅对 UINT16/UINT32 生效，0 表示 BYTE_ORDER_AB）
+  // 16 位字节序（仅对 UINT16/UINT32/INT16/INT32 生效，0 表示 BYTE_ORDER_AB）
   ByteOrder byte_order = 12;
   // 从站默认值（DataCenter 无值/不可用时兜底）
   oneof default_value {
@@ -248,7 +258,7 @@ message PointTable {
 }
 
 // ModbusRTU 模块对外 gRPC 服务（控制面）：用于上位机配置串口链路与点表、以及启停轮询/从站响应。
-// 数据面通过 DataCenter 完成转发闭环：主站轮询后 Publish 点值；从站优先读取 DataCenter 最新值。
+// 数据面通过 DataCenter 完成转发闭环：主站轮询后 Publish 点值，主站写点通过 Subscribe 触发写寄存器；从站优先读取 DataCenter 最新值。
 service ModbusRTUService {
   // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
   // - 仅 TRANSPORT_MQTT_UART 链路在启动连接功能时使用。
