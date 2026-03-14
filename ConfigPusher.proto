@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package ConfigPusherProto;
 
-import "COMMock.proto";
 import "DLT645.proto";
 import "IEC104.proto";
 import "ModbusRTU.proto";
@@ -74,7 +73,8 @@ message AgcConfig {
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
-  COMMockProto.COMMockConfig com_mock = 3;
+  // 预留已删除字段号，避免后续复用导致协议兼容风险。
+  reserved 3;
   Dlt645Config dlt645 = 4;
   AgcConfig agc = 5;
 }
