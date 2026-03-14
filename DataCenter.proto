@@ -73,25 +73,25 @@ message ListConnectionsResponse {
   repeated ConnectionInfo conns = 1;
 }
 
-// 点表（用于展示/校验）
-message PointTable {
+// 连接标签注册表（conn_id -> tags，用于路由校验/展示/自愈；不是协议地址映射点表）
+message ConnTags {
   uint32          conn_id = 1;
   repeated string tags    = 2;
 }
 
-// 点表配置（用于落盘持久化）
-message PointTablesConfig {
-  repeated PointTable point_tables = 1;
+// 连接标签注册表配置（用于落盘持久化）
+message ConnTagsConfig {
+  repeated ConnTags conn_tags = 1;
 }
 
-message UpsertPointTableRequest {
+message UpsertConnTagsRequest {
   uint32          conn_id = 1;
   repeated string tags    = 2;
   // true: 覆盖更新；false: 增量追加
   bool replace = 3;
 }
 
-message GetPointTableRequest {
+message GetConnTagsRequest {
   uint32 conn_id = 1;
 }
 
@@ -173,7 +173,7 @@ message GetLatestResponse {
 }
 
 // 数据中心服务：进程内“数据总线/转发枢纽”。
-// - 上位机负责下发连接/点表/路由配置；各协议模块负责 Publish/Subscribe 与协议互操作。
+// - 上位机负责下发连接/连接标签注册表/路由配置；各协议模块负责 Publish/Subscribe 与协议互操作。
 // - 重要语义：Subscribe 与最新值缓存均为 best-effort（可能丢消息）；配置落盘失败会返回 Status，但内存状态不会回滚。
 service DataCenterService {
   // 注册/更新已分配 conn_id 的连接信息（展示/校验用）。
@@ -199,24 +199,24 @@ service DataCenterService {
   rpc RenameConnection(RenameConnectionRequest) returns (ConnectionInfo);
 
   // 删除连接（按 (module_name, conn_name)）。
-  // - 副作用：会删除该 conn_id 关联的点表/路由/最新值缓存，并关闭该 conn_id 的所有订阅流（best-effort）。
+  // - 副作用：会删除该 conn_id 关联的连接标签注册表/路由/最新值缓存，并关闭该 conn_id 的所有订阅流（best-effort）。
   // - 常见错误：INVALID_ARGUMENT（key 缺失）、NOT_FOUND（连接不存在）。
-  // - 落盘：会依次落盘 connections/point_tables/routes（任一步失败返回 INTERNAL；内存不回滚）。
+  // - 落盘：会依次落盘 connections/conn_tags/routes（任一步失败返回 INTERNAL；内存不回滚）。
   rpc DeleteConnection(DeleteConnectionRequest) returns (Empty);
 
-  // 注册/更新某连接的点表（tag 列表，用于路由配置校验/展示）。
+  // 注册/更新某连接的连接标签注册表（conn_id -> tags，仅用于路由配置校验/展示/自愈，不是协议地址映射点表）。
   // - replace=true：覆盖该 conn_id 的全部 tags；false：增量追加 tags。
   // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）。
-  // - 副作用：成功后会触发点表落盘（失败返回 INTERNAL；内存不回滚）。
-  rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
+  // - 副作用：成功后会触发连接标签注册表落盘（失败返回 INTERNAL；内存不回滚）。
+  rpc UpsertConnTags(UpsertConnTagsRequest) returns (Empty);
 
-  // 获取某连接的点表（tag 列表）。
-  // - 常见错误：INVALID_ARGUMENT（conn_id=0）、NOT_FOUND（点表不存在）。
-  rpc GetPointTable(GetPointTableRequest) returns (PointTable);
+  // 获取某连接的连接标签注册表（tag 列表）。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0）、NOT_FOUND（连接标签注册表不存在）。
+  rpc GetConnTags(GetConnTagsRequest) returns (ConnTags);
 
   // 配置有向路由：src Endpoint -> dst Endpoint。
   // - replace=true：先清空全部路由再写入；false：增量追加。
-  // - 校验：当某 conn_id 已存在点表时，src/dst 的 tag 必须在该点表中；否则返回 INVALID_ARGUMENT。
+  // - 校验：当某 conn_id 已存在连接标签注册表时，src/dst 的 tag 必须在该注册表中；否则返回 INVALID_ARGUMENT。
   // - 注意：当前实现为“逐条写入”，遇到错误会提前返回，已写入的路由不会回滚；replace=true 也会先清空再处理。
   // - 副作用：成功后会触发路由落盘（失败返回 INTERNAL；内存不回滚）。
   rpc UpsertRoutes(UpsertRoutesRequest) returns (Empty);

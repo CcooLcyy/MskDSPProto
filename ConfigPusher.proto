@@ -79,7 +79,7 @@ message Config {
   AgcConfig agc = 5;
 }
 
-message DataCenterPointTable {
+message DataCenterConnTags {
   string module_name = 1;
   string conn_name = 2;
   repeated string tags = 3;
@@ -103,7 +103,7 @@ message DataCenterRoutes {
 }
 
 message DataCenterConfig {
-  repeated DataCenterPointTable point_tables = 1;
+  repeated DataCenterConnTags point_tables = 1;
   DataCenterRoutes routes = 2;
 }
 
