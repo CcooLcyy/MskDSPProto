@@ -85,6 +85,20 @@ message LinkInfo {
   string last_error = 4;
 }
 
+// IEC104 本地持久化的链路配置。
+// 仅保存控制面配置与 conn_id；运行态（transport/线程/last_error）不落盘。
+message PersistedLink {
+  LinkConfig config = 1;
+  uint32 conn_id = 2;
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止启动链路功能。
+  bool pending_delete = 3;
+}
+
+// IEC104 链路配置集合（用于本地落盘持久化）。
+message LinksConfig {
+  repeated PersistedLink links = 1;
+}
+
 message UpsertLinkRequest {
   LinkConfig config = 1;
   // true: 若已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置
@@ -148,6 +162,11 @@ message PointTable {
   repeated Point points = 2;
 }
 
+// IEC104 点表配置集合（用于本地落盘持久化）。
+message PointTablesConfig {
+  repeated PointTable point_tables = 1;
+}
+
 message SendTimeSyncRequest {
   // 连接名：要发送对时命令的链路（STATION_ROLE_MASTER 作为控制站）。
   string conn_name = 1;
@@ -184,7 +203,7 @@ service IEC104Service {
   // 下发/更新点表（tag <-> IOA 映射）。
   // - replace=true：覆盖更新；false：增量追加/更新（若 tag 与 ioa 冲突返回 ALREADY_EXISTS）。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
-  // - 副作用：会将“tags 列表”同步到 DataCenter 的点表（用于路由配置校验/展示）。
+  // - 副作用：会将“tags 列表”同步到 DataCenter 连接标签注册表（用于路由配置校验/展示）。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> IOA 映射）。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。

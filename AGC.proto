@@ -102,6 +102,21 @@ message GroupConfig {
   DerivedOutputs outputs = 6;
 }
 
+// 单条控制组持久化记录（用于 AGC 模块本地落盘持久化）。
+message PersistedGroup {
+  GroupConfig config = 1;
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止重新启动控制组。
+  bool pending_delete = 2;
+}
+
+// 控制组配置集合（用于 AGC 模块本地落盘持久化）。
+message GroupsConfig {
+  // 兼容旧版落盘格式：仅保存控制组配置，不包含待删除状态。
+  repeated GroupConfig groups = 1;
+  // 当前落盘格式：保存控制组配置与待删除控制面状态。
+  repeated PersistedGroup persisted_groups = 2;
+}
+
 enum GroupState {
   GROUP_STATE_UNSPECIFIED    = 0;
   GROUP_STATE_STOPPED        = 1;
@@ -157,7 +172,7 @@ service AGCService {
   // 列出全部控制组信息（配置 + 运行态）。
   rpc ListGroups(Empty) returns (ListGroupsResponse);
   // 删除控制组：停止并清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="AGC", group_name)）。
-  // - 若 DataCenter 删除失败（非 NOT_FOUND），可标记为 PENDING_DELETE 并返回错误码，提示上位机重试。
+  // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码，提示上位机重试。
   rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
   // 启动控制组：启动控制环周期任务，并与 DataCenter 建立订阅/发布通道。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除）。

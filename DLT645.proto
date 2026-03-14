@@ -125,6 +125,19 @@ message LinkInfo {
   string last_error = 4;
 }
 
+// 单条链路持久化记录（用于模块本地落盘）
+message PersistedLink {
+  LinkConfig config = 1;
+  uint32 conn_id = 2;
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止重新启动连接功能。
+  bool pending_delete = 3;
+}
+
+// 链路配置集合（用于落盘持久化）
+message LinksConfig {
+  repeated PersistedLink links = 1;
+}
+
 // 更新全局配置（当前用于 MQTT 连接）
 message UpdateConfigRequest {
   MqttConfig mqtt = 1;
@@ -223,13 +236,20 @@ message PointTable {
   repeated Block blocks = 3;
 }
 
+// 点表配置集合（用于落盘持久化）
+message PointTablesConfig {
+  repeated PointTable point_tables = 1;
+}
+
 // DLT645 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停通信任务。
 service DLT645Service {
   // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
   // 常见错误：INVALID_ARGUMENT（连接参数非法）。
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   // 创建/更新一条 DLT645 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
-  // - create_only=true：若 conn_name 已存在返回 ALREADY_EXISTS。
+  // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - create_only=false：仅允许更新已停止链路；若链路处于 RUNNING/PENDING_DELETE 返回 FAILED_PRECONDITION。
+  // - 更新已有链路时保留原 conn_id 与点表，只覆盖链路配置。
   // - 常见错误：INVALID_ARGUMENT（字段缺失/串口模式未提供 serial_port）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
@@ -238,6 +258,7 @@ service DLT645Service {
   // 列出全部链路信息（配置 + 运行态）。
   rpc ListLinks(Empty) returns (ListLinksResponse);
   // 删除一条链路：先停止通信，再请求 DataCenter 删除对应连接。
+  // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
   // 幂等：DataCenter 返回 NOT_FOUND 时视为已删除。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
   // 启动链路通信任务（点表轮询 + 写入订阅）。
