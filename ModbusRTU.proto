@@ -43,13 +43,6 @@ enum LinkState {
   LINK_STATE_PENDING_DELETE = 3;
 }
 
-// 链路模式
-enum LinkMode {
-  LINK_MODE_UNSPECIFIED = 0;
-  LINK_MODE_MASTER      = 1;  // 主站轮询
-  LINK_MODE_SLAVE       = 2;  // 从站响应
-}
-
 // 主站抄读方案
 enum ReadPlanMode {
   READ_PLAN_MODE_UNSPECIFIED = 0;
@@ -106,15 +99,14 @@ message LinkConfig {
   // - TRANSPORT_SERIAL：表示本地串口 device + 串口参数；
   // - TRANSPORT_MQTT_UART：表示远端 uartManager 串口参数（device 忽略）。
   SerialConfig serial = 2;
-  // 从站地址（1..247）；主站模式作为轮询目标，从站模式作为本机地址
-  uint32 slave_id = 3;
+  // 目标设备地址（1..247）；轮询与写寄存器均使用该地址。
+  uint32 device_id = 3;
   // 轮询周期，单位毫秒（0 表示使用默认值）
   uint32 poll_interval_ms = 4;
   // 点表地址基准（0/1 基）
   AddressBase address_base = 5;
-  // 链路模式（默认主站）
-  LinkMode mode = 6;
-  // 主站抄读方案（仅主站模式生效）
+  reserved 6;
+  // 抄读方案
   ReadPlan read_plan = 7;
   // 传输类型（默认 TRANSPORT_SERIAL）
   TransportType transport_type = 8;
@@ -230,7 +222,7 @@ message Point {
   string tag = 1;
   FunctionCode function = 2;
   uint32 address = 3;
-  // 当前 INT16/INT32 仅主站寄存器功能码支持（0x03/0x04/0x10）；从站暂不支持。
+  // 当前 INT16/INT32 仅寄存器功能码支持（0x03/0x04/0x10）。
   // 其中 0x06 仅允许 UINT16/INT16。
   DataType type = 4;
   // 标度与偏移：
@@ -239,6 +231,7 @@ message Point {
   // - scale=0 视为 1。
   double scale = 5;
   double offset = 6;
+  reserved 7, 8, 13;
   // 死区：工程量单位，仅对 UINT16/UINT32/INT16/INT32 生效，<=0 表示不过滤。
   double deadband = 9;
   // 寄存器数量（0 表示按 type 默认：UINT16/INT16=1、UINT32/INT32=2；BOOL 忽略）
@@ -247,12 +240,6 @@ message Point {
   WordOrder word_order = 11;
   // 16 位字节序（仅对 UINT16/UINT32/INT16/INT32 生效，0 表示 BYTE_ORDER_AB）
   ByteOrder byte_order = 12;
-  // 从站默认值（DataCenter 无值/不可用时兜底）
-  oneof default_value {
-    bool   default_bool = 7;
-    uint32 default_uint16 = 8;
-    uint32 default_uint32 = 13;
-  }
 }
 
 message UpsertPointTableRequest {
@@ -287,8 +274,8 @@ service ModbusRTUService {
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
   // - 校验：
   //   1) TRANSPORT_SERIAL：serial.device 必填；
-  //   2) TRANSPORT_MQTT_UART：serial_port 必填，当前仅支持主站模式；
-  //   3) slave_id 范围 1..247；同一串口/远端串口若参数不一致或模式冲突会返回 FAILED_PRECONDITION。
+  //   2) TRANSPORT_MQTT_UART：serial_port 必填；
+  //   3) device_id 范围 1..247；同一串口/远端串口若参数不一致会返回 FAILED_PRECONDITION。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
@@ -300,19 +287,19 @@ service ModbusRTUService {
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
   // - 幂等：DataCenter 返回 NOT_FOUND 时视为“已删除”，返回 OK。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
-  // 启动链路轮询/从站响应。
-  // - TRANSPORT_SERIAL：支持主站轮询/从站响应，共享串口串行访问。
-  // - TRANSPORT_MQTT_UART：当前仅支持主站轮询，通过 MQTTManager + uartManager 透传 RTU 原始帧。
-  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）、UNIMPLEMENTED（暂不支持的传输/模式组合）。
+  // 启动链路连接功能（轮询 + 可选写寄存器订阅）。
+  // - TRANSPORT_SERIAL：通过本地串口执行轮询。
+  // - TRANSPORT_MQTT_UART：通过 MQTTManager + uartManager 透传 RTU 原始帧。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）、UNIMPLEMENTED（暂不支持的传输类型）。
   rpc StartLink(StartLinkRequest) returns (Empty);
-  // 停止链路轮询。
+  // 停止链路连接功能。
   // - 幂等：重复 StopLink 不会报错（前提是 conn_name 存在）。
   rpc StopLink(StopLinkRequest) returns (Empty);
 
   // 下发/更新点表（tag <-> address 映射）。
   // - replace=true：覆盖更新；false：增量追加/更新（若 tag 与 address 冲突返回 ALREADY_EXISTS）。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
-  // - 副作用：会将“tags 列表”同步到 DataCenter 的点表（用于路由配置校验/展示）；从站默认值仅在模块内使用。
+  // - 副作用：会将“tags 列表”同步到 DataCenter 连接标签注册表（用于路由配置校验/展示）。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> address 映射）。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
