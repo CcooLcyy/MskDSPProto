@@ -41,18 +41,6 @@ message ValueSpec {
   string base_tag = 4;
 }
 
-// 控制环参数（后续可扩展 PI/限斜率/滤波等）
-message ControlLoopConfig {
-  // 周期（毫秒）
-  uint32 period_ms   = 1;
-  // 死区（kW）
-  double deadband_kw = 2;
-  // 每周期最大调整量（kW）
-  double max_step_kw = 3;
-  // 比例系数（0~1 常用）
-  double kp          = 4;
-}
-
 message WeightedStrategyConfig {}
 
 message StrategyConfig {
@@ -84,8 +72,8 @@ message MemberConfig {
 // 派生输出点（由 AGC 发布，可被路由到其他连接，例如主站 IEC104）
 message DerivedOutputs {
   SignalSpec p_total_meas   = 1;  // 台区总实时有功
-  SignalSpec p_total_target = 2;  // 台区总目标有功（AGC 计算/记忆）
-  SignalSpec p_total_error  = 3;  // 台区总偏差（target - meas）
+  SignalSpec p_total_target = 2;  // 台区总目标有功（AGC 本轮实际可下发目标）
+  SignalSpec p_total_error  = 3;  // 台区总偏差（desired_total - total_meas）
 }
 
 // 一个 AGC 连接（conn_name）对应一个控制组
@@ -95,7 +83,8 @@ message GroupConfig {
   // 主站下发点（通过 DataCenter 路由进入 AGC 的 conn_id）
   ValueSpec p_cmd   = 2;
 
-  ControlLoopConfig loop     = 3;
+  reserved 3;
+  reserved "loop";
   StrategyConfig    strategy = 4;
 
   repeated MemberConfig members = 5;
@@ -174,10 +163,10 @@ service AGCService {
   // 删除控制组：停止并清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="AGC", group_name)）。
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码，提示上位机重试。
   rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
-  // 启动控制组：启动控制环周期任务，并与 DataCenter 建立订阅/发布通道。
+  // 启动控制组：启动事件触发控制任务，并与 DataCenter 建立订阅/发布通道。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除）。
   rpc StartGroup(StartGroupRequest) returns (Empty);
-  // 停止控制组：停止控制环任务，并停止与 DataCenter 的订阅/发布通道（若有）。
+  // 停止控制组：停止事件触发控制任务，并停止与 DataCenter 的订阅/发布通道（若有）。
   // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。
   rpc StopGroup(StopGroupRequest) returns (Empty);
 }
