@@ -60,13 +60,17 @@ message Dlt645Config {
 
 // AGC 控制组下发任务
 message AgcGroupTask {
+  // AGC 控制组创建/更新请求。
+  // 配置结构直接复用 AGC 的 UpsertGroupRequest；控制组总目标由 AGC 在相关输入点变化时直接按 p_cmd 语义计算，
+  // 不再包含旧版 loop 步长限制/比例逼近参数。
   AGCProto.UpsertGroupRequest upsert = 1;
-  // true 表示下发配置后调用 StartGroup 启动该控制组内控制环功能
+  // true 表示下发配置后调用 StartGroup 启动该控制组内事件触发控制功能
   bool start = 2;
 }
 
 // AGC 配置集合
 message AgcConfig {
+  // 逐组下发 AGC 控制组配置。
   repeated AgcGroupTask groups = 1;
 }
 
