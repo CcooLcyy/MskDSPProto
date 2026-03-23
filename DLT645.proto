@@ -115,6 +115,8 @@ message LinkConfig {
   uint32 serial_frame_timeout_ms = 15;
   // 预估最大接收字节（COMM_MODE_SERIAL，0 使用默认值）
   uint32 serial_est_size = 16;
+  // 单次点抄收发完成后，到下一次点抄收发开始前的等待间隔，单位毫秒（0 表示无额外等待）
+  uint32 poll_item_interval_ms = 17;
 }
 
 message LinkInfo {
@@ -129,7 +131,7 @@ message LinkInfo {
 message PersistedLink {
   LinkConfig config = 1;
   uint32 conn_id = 2;
-  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止重新启动连接功能。
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止模块自动启动或手工重新启动连接功能。
   bool pending_delete = 3;
 }
 
@@ -244,6 +246,7 @@ message PointTablesConfig {
 // DLT645 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停通信任务。
 service DLT645Service {
   // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
+  // - 若某条已恢复/已下发的链路此前仅因 MQTT 配置未就绪而无法运行，则本 RPC 成功后模块会自动再次尝试启动该链路。
   // 常见错误：INVALID_ARGUMENT（连接参数非法）。
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   // 创建/更新一条 DLT645 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
@@ -262,6 +265,8 @@ service DLT645Service {
   // 幂等：DataCenter 返回 NOT_FOUND 时视为已删除。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
   // 启动链路通信任务（点表轮询 + 写入订阅）。
+  // - 当前模块在“链路配置 + 点表/数据块 + MQTT 配置”达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
+  // - 幂等：连接已在运行时直接返回 OK。
   rpc StartLink(StartLinkRequest) returns (Empty);
   // 停止链路通信任务。
   rpc StopLink(StopLinkRequest) returns (Empty);
@@ -269,6 +274,7 @@ service DLT645Service {
   // - replace=true：覆盖更新；false：增量追加（若 tag/di 冲突返回 ALREADY_EXISTS）。
   // - 数据块：按 block_di 读整块，再按 items 顺序拆分发布。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
+  // - 若链路配置、点表/数据块以及 MQTT 配置在更新后达到模块当前的最小可运行条件，模块会自动尝试启动该链路。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> di 映射）。
   // 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
