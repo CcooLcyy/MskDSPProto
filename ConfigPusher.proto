@@ -12,6 +12,9 @@ message Empty {}
 message Iec104LinkTask {
   IEC104Proto.UpsertLinkRequest link = 1;
   IEC104Proto.UpsertPointTableRequest point_table = 2;
+  // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
+  // 当前版本中 ConfigPusher 不再因该字段额外调用 StartLink。
+  // 当链路配置与点表达到当前最小可运行条件后，由 IEC104 模块自身自动启动模块内功能；该字段更多用于兼容说明或显式补救场景。
   bool start = 3;
 }
 
@@ -24,7 +27,9 @@ message ModbusRtuLinkTask {
   ModbusRTUProto.UpsertLinkRequest link = 1;
   // 对应链路点表；conn_name 为空时默认使用 link.config.conn_name。
   ModbusRTUProto.UpsertPointTableRequest point_table = 2;
-  // true 表示下发完成后调用 StartLink 启动该链路的通信功能。
+  // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
+  // 当前版本中 ConfigPusher 不再因该字段额外调用 StartLink。
+  // 当配置达到当前最小可运行条件后，由 ModbusRTU 模块自身自动启动模块内功能；该字段更多用于兼容说明或显式补救场景。
   bool start = 3;
 }
 
@@ -44,6 +49,9 @@ message ModbusRtuConfig {
 message Dlt645LinkTask {
   DLT645Proto.UpsertLinkRequest link = 1;
   DLT645Proto.UpsertPointTableRequest point_table = 2;
+  // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
+  // 当前版本中 ConfigPusher 不再因该字段额外调用 StartLink。
+  // 当配置达到当前最小可运行条件后，由 DLT645 模块自身自动启动模块内功能；该字段更多用于兼容说明或显式补救场景。
   bool start = 3;
   // 可选：批量设备序号。配置后会按 device_no 展开为多条 DLT645 链路任务。
   // 约束：
@@ -64,7 +72,9 @@ message AgcGroupTask {
   // 配置结构直接复用 AGC 的 UpsertGroupRequest；控制组总目标由 AGC 在相关输入点变化时直接按 p_cmd 语义计算，
   // 不再包含旧版 loop 步长限制/比例逼近参数。
   AGCProto.UpsertGroupRequest upsert = 1;
-  // true 表示下发配置后调用 StartGroup 启动该控制组内事件触发控制功能
+  // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
+  // 当前版本中 ConfigPusher 不再因该字段额外调用 StartGroup。
+  // 当控制组配置达到当前最小可运行条件后，由 AGC 模块自身自动启动模块内功能；该字段更多用于兼容说明或显式补救场景。
   bool start = 2;
 }
 

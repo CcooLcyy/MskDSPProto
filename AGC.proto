@@ -94,7 +94,7 @@ message GroupConfig {
 // 单条控制组持久化记录（用于 AGC 模块本地落盘持久化）。
 message PersistedGroup {
   GroupConfig config = 1;
-  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止重新启动控制组。
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止模块自动启动或手工重新启动控制组。
   bool pending_delete = 2;
 }
 
@@ -153,6 +153,7 @@ service AGCService {
   // 创建/更新一个控制组配置，并为该 group 分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 group_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
   // - 常见错误：INVALID_ARGUMENT（配置缺失/字段非法）、FAILED_PRECONDITION（运行中不允许更新）、UNAVAILABLE（DataCenter 不可达）。
+  // - 若配置更新后达到模块当前的最小可运行条件，AGC 会自动尝试启动该控制组。
   // - 返回：GroupInfo（包含 conn_id、state、last_error）。
   rpc UpsertGroup(UpsertGroupRequest) returns (GroupInfo);
   // 查询单个控制组信息（配置 + 运行态）。
@@ -164,7 +165,9 @@ service AGCService {
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码，提示上位机重试。
   rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
   // 启动控制组：启动事件触发控制任务，并与 DataCenter 建立订阅/发布通道。
-  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除）。
+  // - 当前模块在控制组配置达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
+  // - 幂等：控制组已在运行时直接返回 OK。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/配置未就绪）。
   rpc StartGroup(StartGroupRequest) returns (Empty);
   // 停止控制组：停止事件触发控制任务，并停止与 DataCenter 的订阅/发布通道（若有）。
   // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。

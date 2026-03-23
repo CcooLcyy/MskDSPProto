@@ -135,7 +135,7 @@ message LinkInfo {
 message PersistedLink {
   LinkConfig config = 1;
   uint32 conn_id = 2;
-  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止启动链路功能。
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止模块自动启动或手工启动链路功能。
   bool pending_delete = 3;
 }
 
@@ -268,6 +268,7 @@ message PointTablesConfig {
 service ModbusRTUService {
   // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
   // - 仅 TRANSPORT_MQTT_UART 链路在启动连接功能时使用。
+  // - 若某条已恢复/已下发的链路此前仅因 MQTT 配置未就绪而无法运行，则本 RPC 成功后模块会自动再次尝试启动该链路。
   // - 常见错误：INVALID_ARGUMENT（连接参数为空/不完整）。
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   // 创建/更新一条 ModbusRTU 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
@@ -290,7 +291,9 @@ service ModbusRTUService {
   // 启动链路连接功能（轮询 + 可选写寄存器订阅）。
   // - TRANSPORT_SERIAL：通过本地串口执行轮询。
   // - TRANSPORT_MQTT_UART：通过 MQTTManager + uartManager 透传 RTU 原始帧。
-  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（已在运行/待删除/配置不允许）、UNIMPLEMENTED（暂不支持的传输类型）。
+  // - 当前模块在“链路配置 + 点表 + 必要的 MQTT 配置”达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
+  // - 幂等：链路已在运行时直接返回 OK。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/点表未就绪/MQTT 未配置/配置不允许）、UNIMPLEMENTED（暂不支持的传输类型）。
   rpc StartLink(StartLinkRequest) returns (Empty);
   // 停止链路连接功能。
   // - 幂等：重复 StopLink 不会报错（前提是 conn_name 存在）。
@@ -300,6 +303,7 @@ service ModbusRTUService {
   // - replace=true：覆盖更新；false：增量追加/更新（若 tag 与 address 冲突返回 ALREADY_EXISTS）。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
   // - 副作用：会将“tags 列表”同步到 DataCenter 连接标签注册表（用于路由配置校验/展示）。
+  // - 若链路配置、点表以及必要的 MQTT 配置在更新后达到模块当前的最小可运行条件，模块会自动尝试启动该链路。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> address 映射）。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
