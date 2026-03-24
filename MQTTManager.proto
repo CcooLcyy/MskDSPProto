@@ -24,7 +24,8 @@ service MQTTManagerService {
   rpc RequestAndWait(RequestAndWaitRequest) returns (RequestAndWaitResponse);
 }
 
-// 连接参数：由业务模块透传提供，MQTTManager 按 host:port 维持连接。
+// 连接参数：由业务模块透传提供，MQTTManager 按 host:port + client_id 维持连接。
+// 若同一 host:port + client_id 下其余连接参数不一致，则返回连接参数冲突错误。
 message ConnectionInfo {
   string host = 1;
   uint32 port = 2;
