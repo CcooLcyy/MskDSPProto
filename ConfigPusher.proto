@@ -9,8 +9,13 @@ import "AGC.proto";
 
 message Empty {}
 
+// IEC104 下发任务。
+// - `CONFIG_PUSHER` 编排语义下，`jsonc` 表示 IEC104 链路目标态集合；
+//   ConfigPusher 会收敛删除 `jsonc` 未声明的旧链路，并将保留链路的点表按目标态覆盖。
+// - `start` 仅用于兼容旧模板与日志说明，不再触发额外 StartLink。
 message Iec104LinkTask {
   IEC104Proto.UpsertLinkRequest link = 1;
+  // 目标点表；未提供时视为该链路目标点表为空，旧点表不应继续保留为有效配置。
   IEC104Proto.UpsertPointTableRequest point_table = 2;
   // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
   // 当前版本中 ConfigPusher 不再因该字段额外调用 StartLink。
@@ -18,6 +23,7 @@ message Iec104LinkTask {
   bool start = 3;
 }
 
+// IEC104 目标态集合：未声明的旧链路不会继续保留为有效配置。
 message Iec104Config {
   repeated Iec104LinkTask links = 1;
 }
@@ -25,7 +31,8 @@ message Iec104Config {
 message ModbusRtuLinkTask {
   // 链路配置任务：创建/更新 ModbusRTU 链路。
   ModbusRTUProto.UpsertLinkRequest link = 1;
-  // 对应链路点表；conn_name 为空时默认使用 link.config.conn_name。
+  // 对应链路目标点表；conn_name 为空时默认使用 link.config.conn_name。
+  // `CONFIG_PUSHER` 编排语义下，同名链路的旧点表不应在最终态中残留。
   ModbusRTUProto.UpsertPointTableRequest point_table = 2;
   // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
   // 当前版本中 ConfigPusher 不再因该字段额外调用 StartLink。
@@ -34,7 +41,7 @@ message ModbusRtuLinkTask {
 }
 
 message ModbusRtuConfig {
-  // ModbusRTU 链路任务列表。
+  // ModbusRTU 链路目标态列表：`jsonc` 未声明的旧链路会被收敛删除。
   repeated ModbusRtuLinkTask links = 1;
   // 可选：ModbusRTU MQTT 全局连接参数。
   // 使用场景：
@@ -46,8 +53,13 @@ message ModbusRtuConfig {
   ModbusRTUProto.MqttConfig mqtt = 2;
 }
 
+// DLT645 下发任务。
+// - `CONFIG_PUSHER` 编排语义下，ConfigPusher 会基于展开后的连接名集合收敛删除旧链路；
+// - 同名链路的点表/数据块按目标态覆盖；
+// - `start` 仅用于兼容旧模板与日志说明，不再触发额外 StartLink。
 message Dlt645LinkTask {
   DLT645Proto.UpsertLinkRequest link = 1;
+  // 目标点表；未提供时视为该链路目标点表为空，旧点表/旧数据块不应继续保留为有效配置。
   DLT645Proto.UpsertPointTableRequest point_table = 2;
   // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
   // 当前版本中 ConfigPusher 不再因该字段额外调用 StartLink。
@@ -63,6 +75,7 @@ message Dlt645LinkTask {
 
 message Dlt645Config {
   DLT645Proto.MqttConfig mqtt = 1;
+  // DLT645 链路目标态列表：展开后的连接名若未出现在此集合中，不应继续保留为有效配置。
   repeated Dlt645LinkTask links = 2;
 }
 
@@ -80,7 +93,7 @@ message AgcGroupTask {
 
 // AGC 配置集合
 message AgcConfig {
-  // 逐组下发 AGC 控制组配置。
+  // 逐组下发 AGC 控制组目标态配置；`jsonc` 未声明的旧控制组不应继续保留为有效配置。
   repeated AgcGroupTask groups = 1;
 }
 
@@ -97,6 +110,8 @@ message DataCenterConnTags {
   string module_name = 1;
   string conn_name = 2;
   repeated string tags = 3;
+  // `CONFIG_PUSHER` 编排语义下，该连接的标签集合会按目标态覆盖，旧标签不应残留。
+  // 若某连接参与 routes，建议在 point_tables 中显式声明其所需 tag。
   bool replace = 4;
 }
 
@@ -113,10 +128,16 @@ message DataCenterRoute {
 
 message DataCenterRoutes {
   repeated DataCenterRoute routes = 1;
+  // `CONFIG_PUSHER` 编排语义下，路由集合按目标态覆盖，旧路由不应残留。
   bool replace = 2;
 }
 
 message DataCenterConfig {
+  // DataCenter 目标态配置：
+  // - `point_tables` 表示连接标签注册表目标态；
+  // - `routes` 表示路由目标态；
+  // - `jsonc` 未声明的旧标签/旧路由不应继续保留为有效配置；
+  // - routes 中涉及的连接，建议都在 point_tables 中声明所需 tag，避免旧标签被清空后触发路由校验失败。
   repeated DataCenterConnTags point_tables = 1;
   DataCenterRoutes routes = 2;
 }
