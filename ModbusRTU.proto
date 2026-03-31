@@ -268,7 +268,8 @@ message PointTablesConfig {
 service ModbusRTUService {
   // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
   // - 仅 TRANSPORT_MQTT_UART 链路在启动连接功能时使用。
-  // - 若某条已恢复/已下发的链路此前仅因 MQTT 配置未就绪而无法运行，则本 RPC 成功后模块会自动再次尝试启动该链路。
+  // - 成功返回仅表示 MQTT 配置已生效并完成必要落盘，不会自动启动任何链路连接功能。
+  // - 模块启动并恢复本地持久化配置后，满足最小可运行条件的链路仍可能基于已恢复的 MQTT 配置自动恢复运行。
   // - 常见错误：INVALID_ARGUMENT（连接参数为空/不完整）。
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   // 创建/更新一条 ModbusRTU 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
@@ -277,6 +278,7 @@ service ModbusRTUService {
   //   1) TRANSPORT_SERIAL：serial.device 必填；
   //   2) TRANSPORT_MQTT_UART：serial_port 必填；
   //   3) device_id 范围 1..247；同一串口/远端串口若参数不一致会返回 FAILED_PRECONDITION。
+  // - 成功返回仅表示链路配置已生效并完成必要落盘，不表示链路连接功能已经启动。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
@@ -291,7 +293,8 @@ service ModbusRTUService {
   // 启动链路连接功能（轮询 + 可选写寄存器订阅）。
   // - TRANSPORT_SERIAL：通过本地串口执行轮询。
   // - TRANSPORT_MQTT_UART：通过 MQTTManager + uartManager 透传 RTU 原始帧。
-  // - 当前模块在“链路配置 + 点表 + 必要的 MQTT 配置”达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
+  // - 本 RPC 是显式启动链路连接功能的唯一入口；配置类 RPC 成功后不会自动启动。
+  // - 模块启动并恢复本地持久化配置后，满足最小可运行条件的链路仍可能自动恢复运行。
   // - 幂等：链路已在运行时直接返回 OK。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/点表未就绪/MQTT 未配置/配置不允许）、UNIMPLEMENTED（暂不支持的传输类型）。
   rpc StartLink(StartLinkRequest) returns (Empty);
@@ -303,7 +306,7 @@ service ModbusRTUService {
   // - replace=true：覆盖更新；false：增量追加/更新（若 tag 与 address 冲突返回 ALREADY_EXISTS）。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
   // - 副作用：会将“tags 列表”同步到 DataCenter 连接标签注册表（用于路由配置校验/展示）。
-  // - 若链路配置、点表以及必要的 MQTT 配置在更新后达到模块当前的最小可运行条件，模块会自动尝试启动该链路。
+  // - 成功返回仅表示点表已生效、已同步必要的 DataCenter tags 并完成落盘，不会自动启动链路连接功能。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> address 映射）。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。

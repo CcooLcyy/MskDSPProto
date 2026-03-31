@@ -246,13 +246,15 @@ message PointTablesConfig {
 // DLT645 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停通信任务。
 service DLT645Service {
   // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
-  // - 若某条已恢复/已下发的链路此前仅因 MQTT 配置未就绪而无法运行，则本 RPC 成功后模块会自动再次尝试启动该链路。
+  // - 成功返回仅表示 MQTT 配置已生效并完成必要落盘，不会自动启动任何链路连接功能。
+  // - 模块启动并恢复本地持久化配置后，满足最小可运行条件的链路仍可能基于已恢复的 MQTT 配置自动恢复运行。
   // 常见错误：INVALID_ARGUMENT（连接参数非法）。
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
   // 创建/更新一条 DLT645 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
   // - create_only=false：仅允许更新已停止链路；若链路处于 RUNNING/PENDING_DELETE 返回 FAILED_PRECONDITION。
   // - 更新已有链路时保留原 conn_id 与点表，只覆盖链路配置。
+  // - 成功返回仅表示链路配置已生效并完成必要落盘，不表示链路连接功能已经启动。
   // - 常见错误：INVALID_ARGUMENT（字段缺失/串口模式未提供 serial_port）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
@@ -265,7 +267,8 @@ service DLT645Service {
   // 幂等：DataCenter 返回 NOT_FOUND 时视为已删除。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
   // 启动链路通信任务（点表轮询 + 写入订阅）。
-  // - 当前模块在“链路配置 + 点表/数据块 + MQTT 配置”达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
+  // - 本 RPC 是显式启动链路连接功能的唯一入口；配置类 RPC 成功后不会自动启动。
+  // - 模块启动并恢复本地持久化配置后，满足最小可运行条件的链路仍可能自动恢复运行。
   // - 幂等：连接已在运行时直接返回 OK。
   rpc StartLink(StartLinkRequest) returns (Empty);
   // 停止链路通信任务。
@@ -274,7 +277,7 @@ service DLT645Service {
   // - replace=true：覆盖更新；false：增量追加（若 tag/di 冲突返回 ALREADY_EXISTS）。
   // - 数据块：按 block_di 读整块，再按 items 顺序拆分发布。
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
-  // - 若链路配置、点表/数据块以及 MQTT 配置在更新后达到模块当前的最小可运行条件，模块会自动尝试启动该链路。
+  // - 成功返回仅表示点表/数据块已生效并完成必要落盘与标签同步，不会自动启动链路连接功能。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> di 映射）。
   // 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
