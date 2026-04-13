@@ -113,12 +113,32 @@ enum GroupState {
   GROUP_STATE_PENDING_DELETE = 3;
 }
 
+// AGC 默认点类型：由模块自动生成并注册到当前控制组 conn_id 下，可直接参与 DataCenter 路由。
+enum DefaultPointKind {
+  DEFAULT_POINT_KIND_UNSPECIFIED        = 0;
+  DEFAULT_POINT_KIND_THEORETICAL_LOWER  = 1;
+  DEFAULT_POINT_KIND_THEORETICAL_UPPER  = 2;
+  DEFAULT_POINT_KIND_DYNAMIC_LOWER      = 3;
+  DEFAULT_POINT_KIND_DYNAMIC_UPPER      = 4;
+  DEFAULT_POINT_KIND_COMMAND_ECHO       = 5;
+}
+
+// AGC 默认点元数据：用于上位机发现控制组自动生成的内建点及其路由 tag。
+message DefaultPointInfo {
+  DefaultPointKind kind = 1;
+  string tag = 2;
+  string name = 3;
+  string description = 4;
+}
+
 message GroupInfo {
   GroupConfig config = 1;
   // 由 DataCenter 分配/持久化
   uint32 conn_id = 2;
   GroupState state = 3;
   string last_error = 4;
+  // AGC 自动生成的默认点列表（已注册到本控制组 conn_id 的 DataCenter 连接标签注册表）。
+  repeated DefaultPointInfo default_points = 5;
 }
 
 message UpsertGroupRequest {
@@ -154,12 +174,13 @@ service AGCService {
   // - create_only=true：若 group_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
   // - 常见错误：INVALID_ARGUMENT（配置缺失/字段非法）、FAILED_PRECONDITION（运行中不允许更新）、UNAVAILABLE（DataCenter 不可达）。
   // - 若配置更新后达到模块当前的最小可运行条件，AGC 会自动尝试启动该控制组。
-  // - 返回：GroupInfo（包含 conn_id、state、last_error）。
+  // - 返回：GroupInfo（包含 conn_id、state、last_error 以及默认点列表 default_points）。
   rpc UpsertGroup(UpsertGroupRequest) returns (GroupInfo);
   // 查询单个控制组信息（配置 + 运行态）。
+  // - 返回：GroupInfo（包含默认点列表 default_points，便于上位机发现可直接路由的 AGC 内建点）。
   // - 常见错误：NOT_FOUND（group_name 不存在）、INVALID_ARGUMENT（group_name 为空）。
   rpc GetGroup(GetGroupRequest) returns (GroupInfo);
-  // 列出全部控制组信息（配置 + 运行态）。
+  // 列出全部控制组信息（配置 + 运行态），每个元素都包含该控制组自动生成的默认点列表。
   rpc ListGroups(Empty) returns (ListGroupsResponse);
   // 删除控制组：停止并清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="AGC", group_name)）。
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码，提示上位机重试。
