@@ -4,6 +4,17 @@ package ExportConfigProto;
 
 import "ConfigPusher.proto";
 
+enum ExportScope {
+  EXPORT_SCOPE_UNSPECIFIED = 0;
+  EXPORT_SCOPE_FULL = 1;
+  EXPORT_SCOPE_PARTIAL = 2;
+}
+
+message ExportMetadata {
+  ExportScope scope = 1;
+  repeated string included_sections = 2;
+}
+
 message SourceInfo {
   string manager_addr = 1;
   optional string app_version = 2;
@@ -30,4 +41,5 @@ message FullConfigExport {
   ModuleStartup module_startup = 4;
   ConfigPusherProto.Config config = 5;
   DataBusConfig data_bus = 6;
+  ExportMetadata metadata = 7;
 }
