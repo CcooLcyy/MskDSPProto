@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package ExportConfigProto;
+
+import "ConfigPusher.proto";
+
+message SourceInfo {
+  string manager_addr = 1;
+  optional string app_version = 2;
+}
+
+enum ModuleStartupSource {
+  MODULE_STARTUP_SOURCE_UNSPECIFIED = 0;
+  MODULE_STARTUP_SOURCE_RUNNING_MODULE_INFO = 1;
+}
+
+message ModuleStartup {
+  ModuleStartupSource source = 1;
+  repeated string modules = 2;
+}
+
+message DataBusConfig {
+  ConfigPusherProto.DataCenterRoutes routes = 1;
+}
+
+message FullConfigExport {
+  uint32 schema_version = 1;
+  string exported_at = 2;
+  SourceInfo source = 3;
+  ModuleStartup module_startup = 4;
+  ConfigPusherProto.Config config = 5;
+  DataBusConfig data_bus = 6;
+}
