@@ -160,6 +160,11 @@ message UpsertLinkRequest {
   bool create_only = 2;
 }
 
+message RenameLinkRequest {
+  string old_conn_name = 1;
+  string new_conn_name = 2;
+}
+
 message GetLinkRequest {
   string conn_name = 1;
 }
@@ -281,6 +286,10 @@ service ModbusRTUService {
   // - 成功返回仅表示链路配置已生效并完成必要落盘，不表示链路连接功能已经启动。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);
+  // 重命名一条 ModbusRTU 链路，并保留原 conn_id、点表与运行态关联资源。
+  // - 约束：仅允许在链路停止状态下执行；若 new_conn_name 已存在返回 ALREADY_EXISTS。
+  // - 成功返回新的 LinkInfo（config.conn_name 为 new_conn_name）。
+  rpc RenameLink(RenameLinkRequest) returns (LinkInfo);
   // 查询单条链路信息（配置 + 运行态）。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
   rpc GetLink(GetLinkRequest) returns (LinkInfo);
