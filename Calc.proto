@@ -1,0 +1,157 @@
+syntax = "proto3";
+
+package CalcProto;
+
+// 空参数
+message Empty {}
+
+enum GroupState {
+  GROUP_STATE_UNSPECIFIED    = 0;
+  GROUP_STATE_STOPPED        = 1;
+  GROUP_STATE_RUNNING        = 2;
+  GROUP_STATE_PENDING_DELETE = 3;
+}
+
+// 运算符类型：数值运算仅接受 int64/double；逻辑运算仅接受 bool。
+enum OperatorKind {
+  OPERATOR_KIND_UNSPECIFIED = 0;
+  OPERATOR_KIND_ADD         = 1;
+  OPERATOR_KIND_SUB         = 2;
+  OPERATOR_KIND_MUL         = 3;
+  OPERATOR_KIND_DIV         = 4;
+  OPERATOR_KIND_NOT         = 5;
+  OPERATOR_KIND_AND         = 6;
+  OPERATOR_KIND_OR          = 7;
+  OPERATOR_KIND_XOR         = 8;
+}
+
+// 操作数来源：来自 DataCenter 路由输入槽位，或来自常量。
+enum OperandSourceKind {
+  OPERAND_SOURCE_UNSPECIFIED = 0;
+  OPERAND_SOURCE_ROUTED_INPUT = 1;
+  OPERAND_SOURCE_CONSTANT     = 2;
+}
+
+// 类型化常量：V1 仅支持 bool/int64/double。
+message TypedConstant {
+  oneof kind {
+    bool bool_value = 1;
+    int64 int_value = 2;
+    double double_value = 3;
+  }
+}
+
+// 单个操作数配置。
+message OperandSpec {
+  OperandSourceKind source_kind = 1;
+  TypedConstant constant = 2;
+}
+
+// 单条计算项配置：采用统一 item 模型；NOT 时仅使用 left_operand。
+message CalcItemConfig {
+  string item_name = 1;
+  OperatorKind operator_kind = 2;
+  OperandSpec left_operand = 3;
+  OperandSpec right_operand = 4;
+}
+
+// 单条计算项对外信息：包含配置与自动派生的 3 个内建点 tag。
+message CalcItemInfo {
+  CalcItemConfig config = 1;
+  string left_input_tag = 2;
+  string right_input_tag = 3;
+  string result_tag = 4;
+}
+
+// 单个计算分组配置：一个 group_name 对应一个稳定 conn_id，组内可包含多条 item。
+message CalcGroupConfig {
+  string group_name = 1;
+  repeated CalcItemConfig items = 2;
+}
+
+// 单条分组持久化记录（用于 Calc 模块本地落盘）。
+message PersistedGroup {
+  CalcGroupConfig config = 1;
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止模块自动启动或手工重新启动分组功能。
+  bool pending_delete = 2;
+}
+
+// 分组配置集合（用于 Calc 模块本地落盘持久化）。
+message GroupsConfig {
+  repeated PersistedGroup persisted_groups = 1;
+}
+
+// 分组对外信息：包含控制面配置、运行态以及每个 item 的自动派生内建点。
+message CalcGroupInfo {
+  CalcGroupConfig config = 1;
+  uint32 conn_id = 2;
+  GroupState state = 3;
+  string last_error = 4;
+  repeated CalcItemInfo items = 5;
+}
+
+message UpsertGroupRequest {
+  CalcGroupConfig config = 1;
+  // true: 若 group_name 已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置。
+  bool create_only = 2;
+}
+
+message RenameGroupRequest {
+  string old_group_name = 1;
+  string new_group_name = 2;
+}
+
+message GetGroupRequest {
+  string group_name = 1;
+}
+
+message DeleteGroupRequest {
+  string group_name = 1;
+}
+
+message StartGroupRequest {
+  string group_name = 1;
+}
+
+message StopGroupRequest {
+  string group_name = 1;
+}
+
+message ListGroupsResponse {
+  repeated CalcGroupInfo groups = 1;
+}
+
+// Calc 模块对外 gRPC 服务（控制面）：用于上位机管理类型化运算分组与计算项。
+// - 每个 group 通过 DataCenter 分配/持久化一个 conn_id；组内 item 通过固定内建点与外部连接完成路由。
+service CalcService {
+  // 创建/更新一个计算分组配置，并为该 group 分配/查询 DataCenter 的 conn_id。
+  // - create_only=true：若 group_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - 成功返回仅表示分组配置已生效并完成必要落盘，不保证分组功能已经开始订阅或发布结果。
+  // - 返回：CalcGroupInfo（包含 conn_id、当前 state、last_error 与 items 内建点信息）。
+  rpc UpsertGroup(UpsertGroupRequest) returns (CalcGroupInfo);
+
+  // 重命名一个计算分组，保留原 conn_id、item 配置与运行态关联资源。
+  // - 约束：仅允许在分组停止状态下执行；若 new_group_name 已存在返回 ALREADY_EXISTS。
+  // - 返回：CalcGroupInfo（config.group_name 为 new_group_name）。
+  rpc RenameGroup(RenameGroupRequest) returns (CalcGroupInfo);
+
+  // 查询单个计算分组信息（配置 + 运行态 + item 内建点）。
+  // - 常见错误：NOT_FOUND（group_name 不存在）、INVALID_ARGUMENT（group_name 为空）。
+  rpc GetGroup(GetGroupRequest) returns (CalcGroupInfo);
+
+  // 列出全部计算分组信息（配置 + 运行态 + item 内建点）。
+  rpc ListGroups(Empty) returns (ListGroupsResponse);
+
+  // 删除计算分组：停止订阅线程、清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="Calc", group_name)）。
+  // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
+  rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
+
+  // 启动分组功能：建立 DataCenter 订阅并在输入变化时计算、发布 result。
+  // - 幂等：分组已在运行时直接返回 OK。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/配置未就绪）。
+  rpc StartGroup(StartGroupRequest) returns (Empty);
+
+  // 停止分组功能：停止 DataCenter 订阅与结果发布。
+  // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。
+  rpc StopGroup(StopGroupRequest) returns (Empty);
+}
