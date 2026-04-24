@@ -6,6 +6,7 @@ import "DLT645.proto";
 import "IEC104.proto";
 import "ModbusRTU.proto";
 import "AGC.proto";
+import "AVC.proto";
 
 message Empty {}
 
@@ -97,6 +98,25 @@ message AgcConfig {
   repeated AgcGroupTask groups = 1;
 }
 
+// AVC 控制组下发任务
+message AvcGroupTask {
+  // AVC 控制组创建/更新请求。
+  // 配置结构直接复用 AVC 的 UpsertGroupRequest；当 `jsonc` 中控制组名发生变化时，
+  // ConfigPusher 按“删除旧组 + 创建新组”收敛，不额外提供 RenameGroup 任务。
+  AVCProto.UpsertGroupRequest upsert = 1;
+  // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
+  // 当前版本中 ConfigPusher 不再因该字段额外调用 StartGroup。
+  // 当控制组配置达到当前最小可运行条件后，由 AVC 模块自身自动启动模块内功能；该字段更多用于兼容说明或显式补救场景。
+  bool start = 2;
+}
+
+// AVC 配置集合
+message AvcConfig {
+  // 逐组下发 AVC 控制组目标态配置；`jsonc` 未声明的旧控制组不应继续保留为有效配置。
+  // 若仅变更 group_name，则视为删除旧组并创建新组，不单独执行 RenameGroup。
+  repeated AvcGroupTask groups = 1;
+}
+
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
@@ -104,6 +124,7 @@ message Config {
   reserved 3;
   Dlt645Config dlt645 = 4;
   AgcConfig agc = 5;
+  AvcConfig avc = 6;
 }
 
 message DataCenterConnTags {

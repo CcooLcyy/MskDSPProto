@@ -2,11 +2,212 @@ syntax = "proto3";
 
 package AVCProto;
 
+// 空参数
 message Empty {}
 
-// AVC 模块对外 gRPC 服务（占位）：用于上位机探测模块是否可达。
-// TODO：后续在此 service 扩展 AVC 配置/运行态等接口。
+// 值语义：ABSOLUTE=目标值；DELTA=增量值（相对某个 base）。
+enum ValueMode {
+  VALUE_MODE_UNSPECIFIED = 0;
+  VALUE_MODE_ABSOLUTE    = 1;
+  VALUE_MODE_DELTA       = 2;
+}
+
+// 增量基准（仅在 mode=DELTA 时生效）
+enum DeltaBase {
+  DELTA_BASE_UNSPECIFIED   = 0;
+  // 相对“上一轮期望总无功目标值”（AVC 内部记忆）
+  DELTA_BASE_LAST_TARGET   = 1;
+  // 相对“当前总无功实测值”或“当前成员无功实测值”
+  DELTA_BASE_CURRENT_MEAS  = 2;
+  // 相对“base_tag 对应的值”（同一 conn_id 内，通过 DataCenter 路由输入）
+  DELTA_BASE_BASE_TAG      = 3;
+}
+
+// 一个点的描述：tag+单位+线性换算。
+// raw 表示 DataCenter 中的值；abs: phys=raw*scale+offset；delta: phys=raw*scale。
+message SignalSpec {
+  string tag    = 1;
+  string unit   = 2;
+  double scale  = 3;
+  double offset = 4;
+}
+
+// 输入/输出点的值语义配置。
+message ValueSpec {
+  SignalSpec signal = 1;
+  ValueMode  mode = 2;
+  DeltaBase  delta_base = 3;
+  // 仅当 delta_base=BASE_TAG 时使用；该 tag 的换算规则默认复用 signal 的 scale/offset。
+  string base_tag = 4;
+}
+
+// 目标电压模式下的控制参数。
+message VoltageControlConfig {
+  // 比例系数：当电压偏差超出 deadband 后，按 q = q_meas + kp * (v_ref - v_meas) 计算期望总无功。
+  double kp = 1;
+  // 死区：|v_ref - v_meas| <= deadband 时，不再继续推动总无功目标变化。
+  double deadband = 2;
+}
+
+message WeightedStrategyConfig {}
+
+message StrategyConfig {
+  oneof strategy {
+    WeightedStrategyConfig weighted = 1;
+  }
+}
+
+// 成员（例如一个逆变器）
+message MemberConfig {
+  string member_name = 1;
+  // true: 可控；false: 不可控（只参与量测汇总，不参与分配）
+  bool controllable  = 2;
+
+  // 分配权重：平均分配 weight=1；按设备能力比例可由上位机填写更高权重。
+  double weight      = 3;
+  // 约束（kVar）
+  double q_min_kvar  = 4;
+  double q_max_kvar  = 5;
+
+  // 成员量测点（例如逆变器实时无功）
+  SignalSpec q_meas  = 6;
+  // 成员设定点（输出到 DataCenter，由有向路由转发给下游连接）
+  ValueSpec  q_set   = 7;
+}
+
+// 一个 AVC 连接（conn_name）对应一个控制组。
+message GroupConfig {
+  string group_name = 1;
+
+  // 主电压测量点（通过 DataCenter 路由进入 AVC 的 conn_id）
+  SignalSpec voltage_meas = 2;
+
+  oneof command {
+    // 主站下发的目标电压点（绝对值）
+    SignalSpec voltage_cmd = 3;
+    // 主站下发的总无功目标点（支持绝对值/增量值）
+    ValueSpec q_total_cmd = 4;
+  }
+
+  VoltageControlConfig voltage_control = 5;
+  StrategyConfig strategy = 6;
+  repeated MemberConfig members = 7;
+}
+
+// 单条控制组持久化记录（用于 AVC 模块本地落盘持久化）。
+message PersistedGroup {
+  GroupConfig config = 1;
+  // true 表示上次删除 DataCenter 失败，重启后仍保持待删除态，阻止模块自动启动或手工重新启动控制组。
+  bool pending_delete = 2;
+}
+
+// 控制组配置集合（用于 AVC 模块本地落盘持久化）。
+message GroupsConfig {
+  // 兼容旧版落盘格式：仅保存控制组配置，不包含待删除状态。
+  repeated GroupConfig groups = 1;
+  // 当前落盘格式：保存控制组配置与待删除控制面状态。
+  repeated PersistedGroup persisted_groups = 2;
+}
+
+enum GroupState {
+  GROUP_STATE_UNSPECIFIED    = 0;
+  GROUP_STATE_STOPPED        = 1;
+  GROUP_STATE_RUNNING        = 2;
+  GROUP_STATE_PENDING_DELETE = 3;
+}
+
+// AVC 默认点类型：由模块自动生成并注册到当前控制组 conn_id 下，可直接参与 DataCenter 路由。
+enum DefaultPointKind {
+  DEFAULT_POINT_KIND_UNSPECIFIED        = 0;
+  DEFAULT_POINT_KIND_THEORETICAL_LOWER  = 1;
+  DEFAULT_POINT_KIND_THEORETICAL_UPPER  = 2;
+  DEFAULT_POINT_KIND_DYNAMIC_LOWER      = 3;
+  DEFAULT_POINT_KIND_DYNAMIC_UPPER      = 4;
+  DEFAULT_POINT_KIND_COMMAND_ECHO       = 5;
+  DEFAULT_POINT_KIND_CURRENT_VOLTAGE    = 6;
+  DEFAULT_POINT_KIND_TOTAL_Q_TARGET     = 7;
+  DEFAULT_POINT_KIND_TOTAL_Q_MEAS       = 8;
+  DEFAULT_POINT_KIND_TOTAL_Q_ERROR      = 9;
+  DEFAULT_POINT_KIND_VOLTAGE_ERROR      = 10;
+}
+
+// AVC 默认点元数据：用于上位机发现控制组自动生成的内建点及其路由 tag。
+message DefaultPointInfo {
+  DefaultPointKind kind = 1;
+  string tag = 2;
+  string name = 3;
+  string description = 4;
+}
+
+message GroupInfo {
+  GroupConfig config = 1;
+  // 由 DataCenter 分配/持久化
+  uint32 conn_id = 2;
+  GroupState state = 3;
+  string last_error = 4;
+  // AVC 自动生成的默认点列表（已注册到本控制组 conn_id 的 DataCenter 连接标签注册表）。
+  repeated DefaultPointInfo default_points = 5;
+}
+
+message UpsertGroupRequest {
+  GroupConfig config = 1;
+  // true: 若已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置
+  bool create_only = 2;
+}
+
+message RenameGroupRequest {
+  string old_group_name = 1;
+  string new_group_name = 2;
+}
+
+message GetGroupRequest {
+  string group_name = 1;
+}
+
+message DeleteGroupRequest {
+  string group_name = 1;
+}
+
+message StartGroupRequest {
+  string group_name = 1;
+}
+
+message StopGroupRequest {
+  string group_name = 1;
+}
+
+message ListGroupsResponse {
+  repeated GroupInfo groups = 1;
+}
+
+// AVC 模块对外 gRPC 服务（控制面）：用于上位机配置/启停 AVC 控制组（group）。
+// - 每个 group 通过 DataCenter 分配/持久化一个 conn_id，并通过 tag 与外部连接完成“命令输入/电压反馈/无功设定输出”的数据闭环。
 service AVCService {
-  // 健康探测：返回 OK 表示服务可达。
-  rpc Ping(Empty) returns (Empty);
+  // 创建/更新一个控制组配置，并为该 group 分配/查询 DataCenter 的 conn_id。
+  // - create_only=true：若 group_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - 常见错误：INVALID_ARGUMENT（配置缺失/字段非法）、FAILED_PRECONDITION（运行中不允许更新）、UNAVAILABLE（DataCenter 不可达）。
+  // - 若配置更新后达到模块当前的最小可运行条件，AVC 会自动尝试启动该控制组。
+  // - 返回：GroupInfo（包含 conn_id、state、last_error 以及默认点列表 default_points）。
+  rpc UpsertGroup(UpsertGroupRequest) returns (GroupInfo);
+  // 重命名一个控制组，并保留原 conn_id、默认点、持久化记录与运行态关联资源。
+  // - 约束：仅允许在控制组停止状态下执行；若 new_group_name 已存在返回 ALREADY_EXISTS。
+  // - 成功返回新的 GroupInfo（config.group_name 为 new_group_name）。
+  rpc RenameGroup(RenameGroupRequest) returns (GroupInfo);
+  // 查询单个控制组信息（配置 + 运行态）。
+  // - 返回：GroupInfo（包含默认点列表 default_points，便于上位机发现可直接路由的 AVC 内建点）。
+  // - 常见错误：NOT_FOUND（group_name 不存在）、INVALID_ARGUMENT（group_name 为空）。
+  rpc GetGroup(GetGroupRequest) returns (GroupInfo);
+  // 列出全部控制组信息（配置 + 运行态），每个元素都包含该控制组自动生成的默认点列表。
+  rpc ListGroups(Empty) returns (ListGroupsResponse);
+  // 删除控制组：停止并清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="AVC", group_name)）。
+  // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码，提示上位机重试。
+  rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
+  // 启动控制组：启动事件触发控制任务，并与 DataCenter 建立订阅/发布通道。
+  // - 当前模块在控制组配置达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
+  // - 幂等：控制组已在运行时直接返回 OK。
+  // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/配置未就绪）。
+  rpc StartGroup(StartGroupRequest) returns (Empty);
+  // 停止控制组：停止事件触发控制任务，并停止与 DataCenter 的订阅/发布通道（若有）。
+  // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。
+  rpc StopGroup(StopGroupRequest) returns (Empty);
 }

@@ -39,6 +39,7 @@ message FullConfigExport {
   string exported_at = 2;
   SourceInfo source = 3;
   ModuleStartup module_startup = 4;
+  // ConfigPusher 目标态快照，包含 IEC104/ModbusRTU/DLT645/AGC/AVC 等模块配置。
   ConfigPusherProto.Config config = 5;
   DataBusConfig data_bus = 6;
   ExportMetadata metadata = 7;
