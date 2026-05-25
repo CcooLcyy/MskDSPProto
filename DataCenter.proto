@@ -26,7 +26,7 @@ message PointValue {
 
 // 端点：一个连接内的一个逻辑点
 message Endpoint {
-  // 连接 ID（运行时加速/兼容旧配置使用；0 表示未设置）
+  // 连接 ID（当前运行时展示/过滤/兼容调用使用；0 表示未设置；不作为持久化主键）
   uint32 conn_id = 1;
   // 逻辑点名（UTF-8，可中文）
   string tag = 2;
@@ -77,10 +77,15 @@ message ListConnectionsResponse {
   repeated ConnectionInfo conns = 1;
 }
 
-// 连接标签注册表（conn_id -> tags，用于路由校验/展示/自愈；不是协议地址映射点表）
+// 连接标签注册表（稳定连接主键 -> tags，用于路由校验/展示/自愈；不是协议地址映射点表）
 message ConnTags {
-  uint32          conn_id = 1;
-  repeated string tags    = 2;
+  // 运行时连接 ID；仅用于当前会话展示/查询回填，不作为持久化主键
+  uint32 conn_id = 1;
+  repeated string tags = 2;
+  // 稳定连接主键：模块名
+  string module_name = 3;
+  // 稳定连接主键：模块内连接名
+  string conn_name = 4;
 }
 
 // 连接标签注册表配置（用于落盘持久化）
@@ -130,6 +135,15 @@ message ListRoutesResponse {
 // 路由配置（用于落盘持久化）
 message RoutesConfig {
   repeated Route routes = 1;
+}
+
+// DataCenter 完整配置状态（用于单文件原子落盘，避免 connections/conn_tags/routes 代际不一致）
+message DataCenterState {
+  ConnectionsConfig connections = 1;
+  ConnTagsConfig conn_tags = 2;
+  RoutesConfig routes = 3;
+  // 状态文件格式版本；由 DataCenterStateStore 保存时写入，避免 0 字节 protobuf 被误认为合法状态。
+  uint32 schema_version = 4;
 }
 
 // 发布点值（源连接/点）
@@ -205,31 +219,33 @@ service DataCenterService {
   // 删除连接（按 (module_name, conn_name)）。
   // - 副作用：会删除该 conn_id 关联的连接标签注册表/路由/最新值缓存，并关闭该 conn_id 的所有订阅流（best-effort）。
   // - 常见错误：INVALID_ARGUMENT（key 缺失）、NOT_FOUND（连接不存在）。
-  // - 落盘：会依次落盘 connections/conn_tags/routes（任一步失败返回 INTERNAL；内存不回滚）。
+  // - 落盘：成功后会触发完整状态单文件落盘（失败返回 INTERNAL；内存不回滚）。
   rpc DeleteConnection(DeleteConnectionRequest) returns (Empty);
 
-  // 注册/更新某连接的连接标签注册表（conn_id -> tags，仅用于路由配置校验/展示/自愈，不是协议地址映射点表）。
-  // - replace=true：覆盖该 conn_id 的全部 tags；false：增量追加 tags。
-  // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）。
-  // - 副作用：成功后会触发连接标签注册表落盘（失败返回 INTERNAL；内存不回滚）。
+  // 注册/更新某连接的连接标签注册表（稳定连接主键 -> tags，仅用于路由配置校验/展示/自愈，不是协议地址映射点表）。
+  // - 请求使用当前 conn_id，DataCenter 会先解析为 (module_name, conn_name)，持久化时以稳定连接主键保存。
+  // - replace=true：覆盖该稳定连接主键的全部 tags；false：增量追加 tags。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）、NOT_FOUND（conn_id 未注册）。
+  // - 副作用：成功后会触发完整状态单文件落盘（失败返回 INTERNAL；内存不回滚）。
   rpc UpsertConnTags(UpsertConnTagsRequest) returns (Empty);
 
   // 获取某连接的连接标签注册表（tag 列表）。
-  // - 常见错误：INVALID_ARGUMENT（conn_id=0）、NOT_FOUND（连接标签注册表不存在）。
+  // - 响应会回填当前 conn_id 与稳定连接主键。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0）、NOT_FOUND（conn_id 未注册或连接标签注册表不存在）。
   rpc GetConnTags(GetConnTagsRequest) returns (ConnTags);
 
   // 配置有向路由：src Endpoint -> dst Endpoint。
-  // - replace=true：先清空全部路由再写入；false：增量追加。
-  // - 端点身份：新请求应填写 module_name/conn_name/tag；旧请求仅填写 conn_id/tag 时，DataCenter 会按连接注册表转换为稳定连接主键。
-  // - 校验：当某连接已存在连接标签注册表时，src/dst 的 tag 必须在该注册表中；否则返回 INVALID_ARGUMENT。
-  // - 注意：当前实现为“逐条写入”，遇到错误会提前返回，已写入的路由不会回滚；replace=true 也会先清空再处理。
-  // - 副作用：成功后会触发路由落盘（失败返回 INTERNAL；内存不回滚）。
+  // - replace=true：用请求中的路由整体替换全部路由；false：在当前路由基础上增量追加。
+  // - 端点身份：应优先填写 module_name/conn_name/tag；仅填写 conn_id/tag 时，DataCenter 会按当前连接注册表转换为稳定连接主键。
+  // - 校验：稳定连接主键必须存在；当某连接已存在连接标签注册表时，src/dst 的 tag 必须在该注册表中；否则返回 NOT_FOUND 或 INVALID_ARGUMENT。
+  // - 原子性：先构造并校验新路由集合，全部通过后才替换内存状态；校验失败时旧路由保持不变。
+  // - 副作用：成功后会触发完整状态单文件落盘（失败返回 INTERNAL；内存不回滚）。
   rpc UpsertRoutes(UpsertRoutesRequest) returns (Empty);
 
   // 删除指定路由绑定（不存在则忽略）。
-  // - 端点身份：支持稳定连接主键或旧 conn_id；旧 conn_id 会按连接注册表转换。
-  // - 常见错误：INVALID_ARGUMENT（src/dst 端点缺失或旧 conn_id 无法解析）。
-  // - 副作用：成功后会触发路由落盘（失败返回 INTERNAL；内存不回滚）。
+  // - 端点身份：支持稳定连接主键或当前 conn_id；conn_id 会按连接注册表转换。
+  // - 常见错误：INVALID_ARGUMENT（src/dst 端点缺失）、NOT_FOUND（稳定连接主键或 conn_id 无法解析）。
+  // - 副作用：成功后会触发完整状态单文件落盘（失败返回 INTERNAL；内存不回滚）。
   rpc DeleteRoutes(DeleteRoutesRequest) returns (Empty);
 
   // 查询路由列表；支持按 src/dst 的 conn_id/tag 做可选过滤（0/空表示不滤）；响应会尽量同时返回 conn_id 与稳定连接主键。
