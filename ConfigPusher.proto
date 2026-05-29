@@ -7,6 +7,7 @@ import "IEC104.proto";
 import "ModbusRTU.proto";
 import "AGC.proto";
 import "AVC.proto";
+import "Calc.proto";
 
 message Empty {}
 
@@ -117,6 +118,25 @@ message AvcConfig {
   repeated AvcGroupTask groups = 1;
 }
 
+// Calc 计算分组下发任务
+message CalcGroupTask {
+  // Calc 计算分组创建/更新请求。
+  // 配置结构直接复用 Calc 的 UpsertGroupRequest；当 `jsonc` 中分组名发生变化时，
+  // ConfigPusher 按“删除旧组 + 创建新组”收敛，不额外提供 RenameGroup 任务。
+  CalcProto.UpsertGroupRequest upsert = 1;
+  // 兼容保留字段；true 表示沿用旧流程、旧模板中的显式启动意图。
+  // 当前版本中 ConfigPusher 不再因该字段额外调用 StartGroup。
+  // 当计算分组配置达到当前最小可运行条件后，由 Calc 模块自身自动启动模块内运算功能；该字段更多用于兼容说明或显式补救场景。
+  bool start = 2;
+}
+
+// Calc 配置集合
+message CalcConfig {
+  // 逐组下发 Calc 计算分组目标态配置；`jsonc` 未声明的旧计算分组不应继续保留为有效配置。
+  // 若仅变更 group_name，则视为删除旧组并创建新组，不单独执行 RenameGroup。
+  repeated CalcGroupTask groups = 1;
+}
+
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
@@ -125,6 +145,7 @@ message Config {
   Dlt645Config dlt645 = 4;
   AgcConfig agc = 5;
   AvcConfig avc = 6;
+  CalcConfig calc = 7;
 }
 
 message DataCenterConnTags {
