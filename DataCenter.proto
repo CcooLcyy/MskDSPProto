@@ -137,12 +137,12 @@ message RoutesConfig {
   repeated Route routes = 1;
 }
 
-// DataCenter 完整配置状态（用于单文件原子落盘，避免 connections/conn_tags/routes 代际不一致）
+// DataCenter 完整配置状态（作为 SQLite payload 落盘，避免 connections/conn_tags/routes 代际不一致）
 message DataCenterState {
   ConnectionsConfig connections = 1;
   ConnTagsConfig conn_tags = 2;
   RoutesConfig routes = 3;
-  // 状态文件格式版本；由 DataCenterStateStore 保存时写入，避免 0 字节 protobuf 被误认为合法状态。
+  // 状态 payload 格式版本；由 DataCenterStateStore 保存时写入。
   uint32 schema_version = 4;
 }
 

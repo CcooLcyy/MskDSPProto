@@ -89,7 +89,7 @@ service ModuleManage {
   // 删除模块（预留）。
   // - 当前实现：no-op，仅返回 OK。
   rpc DeleteModule(ModuleInfo) returns (Empty) {}
-  // 保存“启动模块列表”配置到 `./conf/modConf.bin`（protobuf 二进制），用于上位机记忆启动集。
+  // 保存“启动模块列表”配置到 `./conf/config.db` 的 `ModuleManager/module_start_config`，用于上位机记忆启动集。
   // - 当前实现：仅落盘保存，不会在启动时自动读取并启动（如需自启动请由上位机调用 StartModule）。
   rpc SaveModuleStartConfig(ModuleInfos) returns (Empty) {}
 }
