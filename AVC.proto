@@ -24,7 +24,8 @@ enum DeltaBase {
 }
 
 // 一个点的描述：tag+单位+线性换算。
-// raw 表示 DataCenter 中的值；abs: phys=raw*scale+offset；delta: phys=raw*scale。
+// 输入值进入 AVC 内部时：绝对量 eng=value*scale+offset，增量量 eng_delta=value*scale。
+// AVC 输出到 DataCenter 时直接发布工程量，不按 scale/offset 反向换算。
 message SignalSpec {
   string tag    = 1;
   string unit   = 2;

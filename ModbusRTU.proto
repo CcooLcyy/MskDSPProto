@@ -237,7 +237,7 @@ message Point {
   double scale = 5;
   double offset = 6;
   reserved 7, 8, 13;
-  // 死区：工程量单位，仅对 UINT16/UINT32/INT16/INT32 生效，<=0 表示不过滤。
+  // 死区：工程量单位，仅对 UINT16/UINT32/INT16/INT32 生效，<=0 表示不过滤；当 >0 时，|delta| < deadband 过滤，|delta| >= deadband 上报。
   double deadband = 9;
   // 寄存器数量（0 表示按 type 默认：UINT16/INT16=1、UINT32/INT32=2；BOOL 忽略）
   uint32 reg_count = 10;

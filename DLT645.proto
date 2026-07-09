@@ -194,7 +194,7 @@ message Point {
   // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）
   double scale = 6;
   double offset = 7;
-  // 死区：工程量单位，<=0 表示不过滤
+  // 死区：工程量单位，<=0 表示不过滤；当 >0 时，|delta| < deadband 过滤，|delta| >= deadband 上报
   double deadband = 8;
 }
 
@@ -208,7 +208,7 @@ message BlockItem {
   // 标度与偏移：工程量换算 value = raw * scale + offset（scale=0 视为 1）
   double scale = 5;
   double offset = 6;
-  // 死区：工程量单位，<=0 表示不过滤
+  // 死区：工程量单位，<=0 表示不过滤；当 >0 时，|delta| < deadband 过滤，|delta| >= deadband 上报
   double deadband = 7;
   // ASCII 字段右侧空格裁剪（未设置时默认裁剪）
   optional bool trim_right_space = 8;
