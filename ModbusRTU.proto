@@ -245,6 +245,9 @@ message Point {
   WordOrder word_order = 11;
   // 16 位字节序（仅对 UINT16/UINT32/INT16/INT32 生效，0 表示 BYTE_ORDER_AB）
   ByteOrder byte_order = 12;
+  // 位索引（0 表示最低有效位）；仅当 DATA_TYPE_BOOL 使用 0x03/0x04 寄存器读取时生效。
+  // 未设置时 BOOL 仍按 0x01 线圈单点读取；寄存器 BOOL 必须设置该字段。
+  optional uint32 bit_index = 14;
 }
 
 message UpsertPointTableRequest {

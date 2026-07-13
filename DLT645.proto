@@ -196,6 +196,10 @@ message Point {
   double offset = 7;
   // 死区：工程量单位，<=0 表示不过滤；当 >0 时，|delta| < deadband 过滤，|delta| >= deadband 上报
   double deadband = 8;
+  // 位解析字节索引（0 表示数据域第 1 个字节）；仅 DATA_TYPE_BOOL 且 bit_index 已设置时生效。
+  optional uint32 byte_index = 9;
+  // 位索引（0 表示最低有效位）；仅 DATA_TYPE_BOOL 生效。未设置时保持旧行为：整个首字节非 0 即 true。
+  optional uint32 bit_index = 10;
 }
 
 // 数据块子项定义（按表格顺序拼接，不包含 DI）
@@ -212,6 +216,10 @@ message BlockItem {
   double deadband = 7;
   // ASCII 字段右侧空格裁剪（未设置时默认裁剪）
   optional bool trim_right_space = 8;
+  // 位解析字节索引（0 表示该子项数据域第 1 个字节）；仅 DATA_TYPE_BOOL 且 bit_index 已设置时生效。
+  optional uint32 byte_index = 9;
+  // 位索引（0 表示最低有效位）；仅 DATA_TYPE_BOOL 生效。未设置时保持旧行为：整个首字节非 0 即 true。
+  optional uint32 bit_index = 10;
 }
 
 // 数据块定义（一个 DI 对应多个子项）

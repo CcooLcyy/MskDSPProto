@@ -13,6 +13,36 @@ enum Quality {
   QUALITY_UNCERTAIN   = 3;
 }
 
+// 同步命令执行结果。
+enum CommandStatus {
+  COMMAND_STATUS_UNSPECIFIED = 0;
+  // 目标模块已接受并执行命令。
+  COMMAND_ACCEPTED = 1;
+  // 目标模块明确拒绝命令。
+  COMMAND_REJECTED = 2;
+  // 命令源端点未匹配到路由。
+  COMMAND_NO_ROUTE = 3;
+  // 命令源端点匹配到多条路由，无法给协议调用方形成单一确认。
+  COMMAND_AMBIGUOUS_ROUTE = 4;
+  // 目标模块命令执行服务不可达或未实现。
+  COMMAND_TARGET_UNAVAILABLE = 5;
+  // 目标模块命令执行超时。
+  COMMAND_TIMEOUT = 6;
+  // 内部错误。
+  COMMAND_INTERNAL_ERROR = 7;
+}
+
+// 同步命令拒绝原因。
+enum CommandRejectCode {
+  COMMAND_REJECT_UNSPECIFIED = 0;
+  COMMAND_REJECT_OVER_UPPER_LIMIT = 1;
+  COMMAND_REJECT_BELOW_LOWER_LIMIT = 2;
+  COMMAND_REJECT_GROUP_NOT_RUNNING = 3;
+  COMMAND_REJECT_MISSING_MEASUREMENT = 4;
+  COMMAND_REJECT_BAD_CONFIG = 5;
+  COMMAND_REJECT_UNSUPPORTED_POINT = 6;
+}
+
 // 点值（按需扩展）
 message PointValue {
   oneof kind {
@@ -160,6 +190,33 @@ message BatchPublishRequest {
   repeated PublishRequest points = 1;
 }
 
+// 同步命令执行请求：由协议模块发起，DataCenter 按路由转交目标模块。
+message ExecuteCommandRequest {
+  Endpoint src = 1;
+  PointValue value = 2;
+  // 毫秒时间戳；<=0 表示由接收方填充
+  int64 ts_ms = 3;
+  Quality quality = 4;
+  // 调用方生成的请求 ID，用于日志关联和幂等扩展；可为空。
+  string request_id = 5;
+  // 调用方期望的超时时间；0 表示使用接收方默认值。
+  uint32 timeout_ms = 6;
+  // DataCenter 转发给目标模块时填写的目的端点；协议模块发起调用时可不填。
+  Endpoint dst = 7;
+}
+
+// 同步命令执行响应。
+message ExecuteCommandResponse {
+  CommandStatus status = 1;
+  CommandRejectCode reject_code = 2;
+  string reason = 3;
+  Endpoint dst = 4;
+  double requested_value = 5;
+  double accepted_value = 6;
+  double lower_limit = 7;
+  double upper_limit = 8;
+}
+
 // 路由后的点值更新（目的连接/点）
 message PointUpdate {
   uint32 src_conn_id = 1;
@@ -188,6 +245,15 @@ message GetLatestRequest {
 
 message GetLatestResponse {
   repeated PointUpdate updates = 1;
+}
+
+// 通用同步命令执行服务：需要参与协议级命令确认的模块实现该服务。
+service CommandExecutor {
+  // 同步校验并执行一个命令点。
+  // - ACCEPTED：命令已被目标模块接受并执行。
+  // - REJECTED：命令被目标模块按业务规则拒绝，reason/reject_code 给出原因。
+  // - TARGET_UNAVAILABLE/TIMEOUT/INTERNAL_ERROR：命令未确认执行成功，协议模块应按失败处理。
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
 }
 
 // 数据中心服务：进程内“数据总线/转发枢纽”。
@@ -256,6 +322,12 @@ service DataCenterService {
   // - 若该 src 端点无路由：返回 OK（不产生更新）。
   // - 常见错误：INVALID_ARGUMENT（conn_id/tag/value 缺失）。
   rpc Publish(PublishRequest) returns (Empty);
+
+  // 同步执行命令：DataCenter 按源端点路由找到唯一目的端点，并调用目标模块的 CommandExecutor。
+  // - 不替代 Publish/Subscribe；仅用于需要协议级正/负确认的命令。
+  // - 若没有路由、多路由、目标不可达或目标拒绝，返回 ExecuteCommandResponse.status 表示失败原因。
+  // - ACCEPTED 时会更新目的端点最新值缓存；REJECTED 不更新命令输入缓存。
+  rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
 
   // 批量发布（减少 RPC 次数）；语义与 Publish 等价。
   // - 原子校验：会先校验所有 points 的 conn_id/tag/value；若任一不合法则整批失败（不产生任何更新）。
