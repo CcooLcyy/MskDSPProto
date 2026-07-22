@@ -64,7 +64,7 @@ message ReadBlock {
 message ReadPlan {
   // 抄读模式：POINT=逐点；EXPLICIT=按区间
   ReadPlanMode mode = 1;
-  // 显式区间列表（mode=EXPLICIT 时必填）
+  // 显式区间列表（mode=EXPLICIT 时必填；mode=POINT 时保留但忽略）
   repeated ReadBlock blocks = 2;
 }
 
