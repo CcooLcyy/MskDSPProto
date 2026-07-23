@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package CalcProto;
 
+import "DataCenter.proto";
+
 // 空参数
 message Empty {}
 
@@ -12,7 +14,7 @@ enum GroupState {
   GROUP_STATE_PENDING_DELETE = 3;
 }
 
-// 运算符类型：数值运算仅接受 int64/double；逻辑运算仅接受 bool。
+// 运算符类型：数值与聚合运算仅接受 int64/double；逻辑运算仅接受 bool。
 enum OperatorKind {
   OPERATOR_KIND_UNSPECIFIED = 0;
   OPERATOR_KIND_ADD         = 1;
@@ -23,6 +25,10 @@ enum OperatorKind {
   OPERATOR_KIND_AND         = 6;
   OPERATOR_KIND_OR          = 7;
   OPERATOR_KIND_XOR         = 8;
+  // 多项数值求和；操作数配置在 CalcItemConfig.operands 中。
+  OPERATOR_KIND_SUM         = 9;
+  // 多项数值平均；操作数配置在 CalcItemConfig.operands 中。
+  OPERATOR_KIND_AVERAGE     = 10;
 }
 
 // 操作数来源：来自 DataCenter 路由输入槽位，或来自常量。
@@ -47,20 +53,40 @@ message OperandSpec {
   TypedConstant constant = 2;
 }
 
-// 单条计算项配置：采用统一 item 模型；NOT 时仅使用 left_operand。
+// 单条计算项配置：旧二元/逻辑运算使用 left_operand/right_operand；SUM/AVERAGE 使用 operands。
 message CalcItemConfig {
   string item_name = 1;
   OperatorKind operator_kind = 2;
   OperandSpec left_operand = 3;
   OperandSpec right_operand = 4;
+  // SUM/AVERAGE 的有序操作数列表，至少包含两个操作数；可混合路由输入与常量。
+  repeated OperandSpec operands = 5;
+  // AVERAGE 的结果小数位数；未设置时不主动舍入。
+  optional uint32 decimal_places = 6;
 }
 
-// 单条计算项对外信息：包含配置与自动派生的 3 个内建点 tag。
+// 单个操作数的运行状态，用于解释计算项尚未发布结果的具体原因。
+message CalcOperandStatus {
+  uint32 index = 1;
+  string input_tag = 2;
+  bool ready = 3;
+  string reason = 4;
+  DataCenterProto.Quality quality = 5;
+  int64 ts_ms = 6;
+}
+
+// 单条计算项对外信息：包含配置、自动派生的输入/结果点 tag 与运行状态诊断。
 message CalcItemInfo {
   CalcItemConfig config = 1;
   string left_input_tag = 2;
   string right_input_tag = 3;
   string result_tag = 4;
+  // 按 CalcItemConfig.operands 顺序返回聚合输入点；旧二元 item 也返回对应的两个输入点。
+  repeated string input_tags = 5;
+  // 当前各操作数是否已经收到可诊断的点值，以及未发布结果时的原因。
+  repeated CalcOperandStatus operand_status = 6;
+  // 当前计算项最近一次未发布结果的原因；没有错误时为空。
+  string last_error = 7;
 }
 
 // 单个计算分组配置：一个 group_name 对应一个稳定 conn_id，组内可包含多条 item。
