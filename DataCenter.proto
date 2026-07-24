@@ -229,6 +229,17 @@ message PointUpdate {
   Quality    quality = 7;
 }
 
+// 源端点最新值更新（用于实时监视，不依赖路由）。
+// sequence 在当前 DataCenter 进程内全局单调递增；进程重启后从头计数。
+message SourcePointUpdate {
+  uint32 conn_id = 1;
+  string tag = 2;
+  PointValue value = 3;
+  int64 ts_ms = 4;
+  Quality quality = 5;
+  uint64 sequence = 6;
+}
+
 message SubscribeRequest {
   // 订阅哪个连接的数据（目的连接）
   uint32 conn_id = 1;
@@ -245,6 +256,15 @@ message GetLatestRequest {
 
 message GetLatestResponse {
   repeated PointUpdate updates = 1;
+}
+
+message GetSourceLatestRequest {
+  uint32 conn_id = 1;
+  repeated string tags = 2;
+}
+
+message GetSourceLatestResponse {
+  repeated SourcePointUpdate updates = 1;
 }
 
 // 通用同步命令执行服务：需要参与协议级命令确认的模块实现该服务。
@@ -283,7 +303,7 @@ service DataCenterService {
   rpc RenameConnection(RenameConnectionRequest) returns (ConnectionInfo);
 
   // 删除连接（按 (module_name, conn_name)）。
-  // - 副作用：会删除该 conn_id 关联的连接标签注册表/路由/最新值缓存，并关闭该 conn_id 的所有订阅流（best-effort）。
+  // - 副作用：会删除该 conn_id 关联的连接标签注册表/路由/源端与目的端最新值缓存，并关闭该 conn_id 的所有订阅流（best-effort）。
   // - 常见错误：INVALID_ARGUMENT（key 缺失）、NOT_FOUND（连接不存在）。
   // - 落盘：成功后会触发完整状态单文件落盘（失败返回 INTERNAL；内存不回滚）。
   rpc DeleteConnection(DeleteConnectionRequest) returns (Empty);
@@ -317,10 +337,10 @@ service DataCenterService {
   // 查询路由列表；支持按 src/dst 的 conn_id/tag 做可选过滤（0/空表示不滤）；响应会尽量同时返回 conn_id 与稳定连接主键。
   rpc ListRoutes(ListRoutesRequest) returns (ListRoutesResponse);
 
-  // 发布单点数据（源端点）：DataCenter 按路由生成 PointUpdate，并写入目的端点“最新值缓存”，同时推送订阅者。
+  // 发布单点数据（源端点）：DataCenter 无条件更新源端“最新值缓存”，再按路由生成 PointUpdate，并写入目的端点“最新值缓存”，同时推送订阅者。
   // - ts_ms<=0：由 DataCenter 填充当前毫秒时间戳。
-  // - 若该 src 端点无路由：返回 OK（不产生更新）。
-  // - 常见错误：INVALID_ARGUMENT（conn_id/tag/value 缺失）。
+  // - 若该 src 端点无路由：返回 OK（不产生目的端更新，但仍更新源端最新值缓存）。
+  // - 常见错误：INVALID_ARGUMENT（conn_id/tag/value 缺失）、NOT_FOUND（源或目的连接未注册）、RESOURCE_EXHAUSTED（源端 sequence 耗尽）。
   rpc Publish(PublishRequest) returns (Empty);
 
   // 同步执行命令：DataCenter 按源端点路由找到唯一目的端点，并调用目标模块的 CommandExecutor。
@@ -330,9 +350,17 @@ service DataCenterService {
   rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
 
   // 批量发布（减少 RPC 次数）；语义与 Publish 等价。
-  // - 原子校验：会先校验所有 points 的 conn_id/tag/value；若任一不合法则整批失败（不产生任何更新）。
+  // - 原子校验：会先校验所有 points 的 conn_id/tag/value/连接与目的路由；若任一不合法则整批失败（不产生任何源端或目的端更新）。
+  // - 常见错误：INVALID_ARGUMENT（point 字段缺失）、NOT_FOUND（源或目的连接未注册）、RESOURCE_EXHAUSTED（源端 sequence 耗尽）。
   // - ts_ms<=0：对每个 point 分别填充当前毫秒时间戳。
   rpc BatchPublish(BatchPublishRequest) returns (Empty);
+
+  // 拉取源连接已发布的最新值快照（best-effort；仅最新值，不含历史，也不依赖业务 Route）。
+  // - tags 为空：返回该 conn_id 下全部已缓存源点；否则只返回过滤集合。
+  // - 返回值只存在于当前 DataCenter 进程内存，重启或删除该连接后会清空；读取不会落盘或修改配置。
+  // - sequence 在当前进程内全局单调递增，消费方可用于拒绝乱序响应。
+  // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）、NOT_FOUND（conn_id 未注册）。
+  rpc GetSourceLatest(GetSourceLatestRequest) returns (GetSourceLatestResponse);
 
   // 拉取目的连接内的最新值快照（best-effort；仅最新值，不含历史）。
   // - tags 为空：返回该 conn_id 下全部已缓存点；否则只返回过滤集合。
