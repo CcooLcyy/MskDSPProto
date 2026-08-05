@@ -4,6 +4,7 @@ package ConfigPusherProto;
 
 import "DLT645.proto";
 import "IEC104.proto";
+import "IEC61850.proto";
 import "ModbusRTU.proto";
 import "AGC.proto";
 import "AVC.proto";
@@ -28,6 +29,20 @@ message Iec104LinkTask {
 // IEC104 目标态集合：未声明的旧链路不会继续保留为有效配置。
 message Iec104Config {
   repeated Iec104LinkTask links = 1;
+}
+
+// IEC61850的一个SCL文件来源。相对路径由ConfigPusher基于iec61850.jsonc所在目录解析。
+message Iec61850ModelTask {
+  string model_name = 1;
+  string scl_file = 2;
+  // 导入诊断中显示的来源名称；为空时使用scl_file的文件名。
+  string source_name = 3;
+}
+
+// IEC61850完整目标态。SCL由IEC61850模块解析，ConfigPusher不展开模型内容。
+message Iec61850Config {
+  repeated Iec61850ModelTask models = 1;
+  repeated IEC61850Proto.IedTarget ieds = 2;
 }
 
 message ModbusRtuLinkTask {
@@ -146,6 +161,7 @@ message Config {
   AgcConfig agc = 5;
   AvcConfig avc = 6;
   CalcConfig calc = 7;
+  Iec61850Config iec61850 = 8;
 }
 
 message DataCenterConnTags {

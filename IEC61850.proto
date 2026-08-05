@@ -1,0 +1,719 @@
+syntax = "proto3";
+
+package IEC61850Proto;
+
+// 空参数或空响应。
+message Empty {}
+
+// SCL文档类型。
+enum SclDocumentKind {
+  SCL_DOCUMENT_KIND_UNSPECIFIED = 0;
+  SCL_DOCUMENT_KIND_SCD = 1;
+  SCL_DOCUMENT_KIND_CID = 2;
+  SCL_DOCUMENT_KIND_ICD = 3;
+}
+
+// 校验问题级别。
+enum ValidationSeverity {
+  VALIDATION_SEVERITY_UNSPECIFIED = 0;
+  VALIDATION_SEVERITY_WARNING = 1;
+  VALIDATION_SEVERITY_ERROR = 2;
+}
+
+// IEC 61850功能约束。
+enum FunctionalConstraint {
+  FUNCTIONAL_CONSTRAINT_UNSPECIFIED = 0;
+  FUNCTIONAL_CONSTRAINT_ST = 1;
+  FUNCTIONAL_CONSTRAINT_MX = 2;
+  FUNCTIONAL_CONSTRAINT_SP = 3;
+  FUNCTIONAL_CONSTRAINT_SV = 4;
+  FUNCTIONAL_CONSTRAINT_CF = 5;
+  FUNCTIONAL_CONSTRAINT_DC = 6;
+  FUNCTIONAL_CONSTRAINT_SG = 7;
+  FUNCTIONAL_CONSTRAINT_SE = 8;
+  FUNCTIONAL_CONSTRAINT_SR = 9;
+  FUNCTIONAL_CONSTRAINT_OR = 10;
+  FUNCTIONAL_CONSTRAINT_BL = 11;
+  FUNCTIONAL_CONSTRAINT_EX = 12;
+  FUNCTIONAL_CONSTRAINT_CO = 13;
+  FUNCTIONAL_CONSTRAINT_RP = 14;
+  FUNCTIONAL_CONSTRAINT_BR = 15;
+  FUNCTIONAL_CONSTRAINT_LG = 16;
+  FUNCTIONAL_CONSTRAINT_GO = 17;
+  FUNCTIONAL_CONSTRAINT_MS = 18;
+  FUNCTIONAL_CONSTRAINT_US = 19;
+}
+
+// 点值类型。
+enum PointValueType {
+  POINT_VALUE_TYPE_UNSPECIFIED = 0;
+  POINT_VALUE_TYPE_BOOL = 1;
+  POINT_VALUE_TYPE_INT64 = 2;
+  POINT_VALUE_TYPE_DOUBLE = 3;
+  POINT_VALUE_TYPE_STRING = 4;
+  POINT_VALUE_TYPE_BYTES = 5;
+}
+
+// 点数据来源。
+enum PointSource {
+  POINT_SOURCE_UNSPECIFIED = 0;
+  POINT_SOURCE_MMS = 1;
+  POINT_SOURCE_GOOSE = 2;
+  POINT_SOURCE_SV_DERIVED = 3;
+  POINT_SOURCE_INTERNAL = 4;
+}
+
+// 保护输入比较方式。
+enum ProtectionComparator {
+  PROTECTION_COMPARATOR_UNSPECIFIED = 0;
+  PROTECTION_COMPARATOR_BOOL_TRUE = 1;
+  PROTECTION_COMPARATOR_BOOL_FALSE = 2;
+  PROTECTION_COMPARATOR_EQUAL = 3;
+  PROTECTION_COMPARATOR_NOT_EQUAL = 4;
+  PROTECTION_COMPARATOR_GREATER_THAN = 5;
+  PROTECTION_COMPARATOR_GREATER_OR_EQUAL = 6;
+  PROTECTION_COMPARATOR_LESS_THAN = 7;
+  PROTECTION_COMPARATOR_LESS_OR_EQUAL = 8;
+}
+
+// A/B网络通道标识。
+enum NetworkChannel {
+  NETWORK_CHANNEL_UNSPECIFIED = 0;
+  NETWORK_CHANNEL_A = 1;
+  NETWORK_CHANNEL_B = 2;
+}
+
+// IEC61850实时线程调度策略；未指定时使用普通Linux调度。
+enum ThreadSchedulingPolicy {
+  THREAD_SCHEDULING_POLICY_UNSPECIFIED = 0;
+  THREAD_SCHEDULING_POLICY_FIFO = 1;
+  THREAD_SCHEDULING_POLICY_ROUND_ROBIN = 2;
+}
+
+// IEC61850实时线程策略应用失败时的处理方式。
+enum ThreadRuntimeFailureMode {
+  THREAD_RUNTIME_FAILURE_MODE_UNSPECIFIED = 0;
+  THREAD_RUNTIME_FAILURE_MODE_DEGRADE = 1;
+  THREAD_RUNTIME_FAILURE_MODE_STRICT = 2;
+}
+
+// IED通信功能运行状态。
+enum IedState {
+  IED_STATE_UNSPECIFIED = 0;
+  IED_STATE_STOPPED = 1;
+  IED_STATE_STARTING = 2;
+  IED_STATE_RUNNING = 3;
+  IED_STATE_DEGRADED = 4;
+  IED_STATE_STOPPING = 5;
+  IED_STATE_PENDING_DELETE = 6;
+  IED_STATE_ERROR = 7;
+}
+
+// 单个网络通道状态。
+enum ChannelState {
+  CHANNEL_STATE_UNSPECIFIED = 0;
+  CHANNEL_STATE_DISABLED = 1;
+  CHANNEL_STATE_DISCONNECTED = 2;
+  CHANNEL_STATE_CONNECTING = 3;
+  CHANNEL_STATE_CONNECTED = 4;
+  CHANNEL_STATE_ERROR = 5;
+}
+
+// SCL校验问题。
+message ValidationIssue {
+  ValidationSeverity severity = 1;
+  string code = 2;
+  string path = 3;
+  string message = 4;
+}
+
+// SCL Address/P参数，保留厂商扩展参数。
+message SclAddressParameter {
+  string type = 1;
+  string value = 2;
+}
+
+// GOOSE或SV二层组播地址。
+message SclMulticastAddress {
+  string ld_inst = 1;
+  string cb_name = 2;
+  repeated SclAddressParameter parameters = 3;
+  optional uint32 app_id = 4;
+  optional uint32 vlan_id = 5;
+  optional uint32 vlan_priority = 6;
+  string mac_address = 7;
+}
+
+// Communication中的ConnectedAP。
+message SclConnectedAp {
+  string subnetwork_name = 1;
+  string network_type = 2;
+  string ied_name = 3;
+  string ap_name = 4;
+  repeated SclAddressParameter address = 5;
+  repeated SclMulticastAddress gse = 6;
+  repeated SclMulticastAddress smv = 7;
+}
+
+// IED访问点。
+message SclAccessPoint {
+  string name = 1;
+  bool has_server = 2;
+}
+
+// 规范化逻辑节点。
+message SclLogicalNode {
+  string ied_name = 1;
+  string ld_inst = 2;
+  string prefix = 3;
+  string ln_class = 4;
+  string ln_inst = 5;
+  string ln_type = 6;
+  string node_ref = 7;
+  // 该逻辑节点所属的AccessPoint。
+  string access_point = 8;
+}
+
+// 规范化数据对象。
+message SclDataObject {
+  string data_ref = 1;
+  string type_ref = 2;
+  string cdc = 3;
+  string description = 4;
+  // 该数据对象所属的AccessPoint。
+  string access_point = 5;
+}
+
+// 规范化数据属性；嵌套结构展开为稳定data_ref。
+message SclDataAttribute {
+  string data_ref = 1;
+  FunctionalConstraint fc = 2;
+  string basic_type = 3;
+  string type_ref = 4;
+  uint32 count = 5;
+  string description = 6;
+  // 该数据属性所属的AccessPoint。
+  string access_point = 7;
+}
+
+// DataSet中的FCDA成员。
+message SclFcda {
+  string ld_inst = 1;
+  string prefix = 2;
+  string ln_class = 3;
+  string ln_inst = 4;
+  string do_name = 5;
+  string da_name = 6;
+  FunctionalConstraint fc = 7;
+  string data_ref = 8;
+}
+
+// 规范化DataSet。
+message SclDataSet {
+  string owner_node_ref = 1;
+  string name = 2;
+  string data_set_ref = 3;
+  repeated SclFcda members = 4;
+  // 该数据集所属的AccessPoint。
+  string access_point = 5;
+}
+
+// 报告触发选项。
+message SclTriggerOptions {
+  bool data_change = 1;
+  bool quality_change = 2;
+  bool data_update = 3;
+  bool integrity = 4;
+  bool general_interrogation = 5;
+}
+
+// 报告可选字段。
+message SclOptionalFields {
+  bool sequence_number = 1;
+  bool report_timestamp = 2;
+  bool reason_code = 3;
+  bool data_set = 4;
+  bool data_reference = 5;
+  bool buffer_overflow = 6;
+  bool entry_id = 7;
+  bool config_revision = 8;
+  bool segmentation = 9;
+}
+
+// 规范化ReportControl。
+message SclReportControl {
+  string owner_node_ref = 1;
+  string name = 2;
+  string rcb_ref = 3;
+  string data_set_ref = 4;
+  string report_id = 5;
+  bool buffered = 6;
+  uint64 config_revision = 7;
+  uint32 integrity_period_ms = 8;
+  uint32 buffer_time_ms = 9;
+  uint32 max_instances = 10;
+  SclTriggerOptions trigger_options = 11;
+  SclOptionalFields optional_fields = 12;
+  // 该报告控制块所属的AccessPoint。
+  string access_point = 13;
+}
+
+// 规范化GSEControl。
+message SclGseControl {
+  string owner_node_ref = 1;
+  string name = 2;
+  string control_ref = 3;
+  // GSEControl@appID的文本goID；数值APPID来自Communication中的组播地址。
+  string go_id = 4;
+  string data_set_ref = 5;
+  uint64 config_revision = 6;
+  bool fixed_offsets = 7;
+  // 该GOOSE控制块所属的AccessPoint。
+  string access_point = 8;
+}
+
+// 规范化SampledValueControl。
+message SclSampledValueControl {
+  string owner_node_ref = 1;
+  string name = 2;
+  string control_ref = 3;
+  string sv_id = 4;
+  string data_set_ref = 5;
+  uint64 config_revision = 6;
+  uint32 sample_rate = 7;
+  uint32 nof_asdu = 8;
+  bool multicast = 9;
+  // 该采样值控制块所属的AccessPoint。
+  string access_point = 10;
+}
+
+// 逻辑节点Inputs中的外部引用。
+message SclExtRef {
+  string owner_node_ref = 1;
+  string int_addr = 2;
+  string ied_name = 3;
+  string ld_inst = 4;
+  string prefix = 5;
+  string ln_class = 6;
+  string ln_inst = 7;
+  string do_name = 8;
+  string da_name = 9;
+  FunctionalConstraint fc = 10;
+  string service_type = 11;
+  string src_ld_inst = 12;
+  string src_prefix = 13;
+  string src_ln_class = 14;
+  string src_ln_inst = 15;
+  string src_cb_name = 16;
+  string source_data_ref = 17;
+  // 该外部引用所属的AccessPoint。
+  string access_point = 18;
+}
+
+// SCL中的一个IED及其展开后的模型对象。
+message SclIed {
+  string name = 1;
+  string manufacturer = 2;
+  string type = 3;
+  string description = 4;
+  repeated SclAccessPoint access_points = 5;
+  repeated SclLogicalNode logical_nodes = 6;
+  repeated SclDataObject data_objects = 7;
+  repeated SclDataAttribute data_attributes = 8;
+  repeated SclDataSet data_sets = 9;
+  repeated SclReportControl report_controls = 10;
+  repeated SclGseControl gse_controls = 11;
+  repeated SclSampledValueControl sampled_value_controls = 12;
+  repeated SclExtRef ext_refs = 13;
+}
+
+// 可持久化的规范化SCL模型。
+message NormalizedSclModel {
+  string model_name = 1;
+  string source_name = 2;
+  SclDocumentKind document_kind = 3;
+  string namespace_uri = 4;
+  string revision = 5;
+  string source_checksum = 6;
+  repeated SclIed ieds = 7;
+  repeated SclConnectedAp connected_access_points = 8;
+}
+
+// 模型摘要。
+message SclModelSummary {
+  string model_name = 1;
+  string source_name = 2;
+  SclDocumentKind document_kind = 3;
+  string source_checksum = 4;
+  uint32 ied_count = 5;
+  uint32 logical_node_count = 6;
+  uint32 data_attribute_count = 7;
+  uint32 data_set_count = 8;
+  uint32 report_control_count = 9;
+  uint32 gse_control_count = 10;
+  uint32 sampled_value_control_count = 11;
+  uint32 external_reference_count = 12;
+}
+
+// 导入或校验SCL模型。
+message ImportSclRequest {
+  string model_name = 1;
+  string source_name = 2;
+  bytes content = 3;
+  bool validate_only = 4;
+  bool replace = 5;
+}
+
+// SCL导入结果。
+message ImportSclResponse {
+  SclModelSummary summary = 1;
+  repeated ValidationIssue issues = 2;
+}
+
+// 按名称查询模型摘要。
+message GetModelSummaryRequest {
+  string model_name = 1;
+}
+
+// 模型摘要列表。
+message ListModelsResponse {
+  repeated SclModelSummary models = 1;
+}
+
+// 删除一个未被IED配置引用的模型。
+message DeleteModelRequest {
+  string model_name = 1;
+}
+
+// IED的一个A/B网络通道。
+message NetworkChannelConfig {
+  NetworkChannel channel = 1;
+  bool enabled = 2;
+  string interface_name = 3;
+  string subnetwork_name = 4;
+  string local_ip = 5;
+  string remote_ip = 6;
+  uint32 remote_port = 7;
+}
+
+// 保护规则的一个输入条件；条件之间采用逻辑与关系。
+message ProtectionInputCondition {
+  // 仅保留给不含启动计划的内部单元测试；正式配置使用data_ref和fc。
+  uint32 signal_id = 1;
+  ProtectionComparator comparator = 2;
+  PointValueType value_type = 3;
+  bool bool_value = 4;
+  int64 int_value = 5;
+  double double_value = 6;
+  // 0表示不额外检查新鲜度；非零时要求最近一次输入不超过该毫秒数。
+  uint32 max_age_ms = 7;
+  // 稳定输入引用；运行时由data_ref+fc解析为当前会话signal_id。
+  string data_ref = 8;
+  FunctionalConstraint fc = 9;
+}
+
+// 保护联锁输入的稳定引用。
+message ProtectionSignalReference {
+  string data_ref = 1;
+  FunctionalConstraint fc = 2;
+}
+
+// GOOSE保护动作的一个有序输出值。
+message ProtectionOutputValue {
+  PointValueType value_type = 1;
+  bool bool_value = 2;
+  int64 int_value = 3;
+  double double_value = 4;
+  uint32 quality_bits = 5;
+}
+
+// 一个配置化保护/联锁规则。
+message ProtectionRule {
+  string rule_id = 1;
+  repeated ProtectionInputCondition conditions = 2;
+  // 仅保留给不含启动计划的内部单元测试；正式配置使用interlock_signals。
+  repeated uint32 interlock_signal_ids = 3;
+  // 仅保留给不含启动计划的内部单元测试；正式配置使用output_control_ref。
+  uint32 output_subscription_id = 4;
+  repeated ProtectionOutputValue assert_values = 5;
+  repeated ProtectionOutputValue release_values = 6;
+  uint32 assert_delay_ms = 7;
+  uint32 release_delay_ms = 8;
+  // 稳定GOOSE控制块引用；运行时由control_ref解析为当前订阅编号。
+  string output_control_ref = 9;
+  repeated ProtectionSignalReference interlock_signals = 10;
+}
+
+// IED通信配置。
+message IedConfig {
+  string conn_name = 1;
+  string model_name = 2;
+  string ied_name = 3;
+  string access_point = 4;
+  repeated NetworkChannelConfig channels = 5;
+  bool enable_mms = 6;
+  bool enable_goose = 7;
+  bool enable_sv = 8;
+  bool auto_start = 9;
+  // MMS待处理点值容量；0使用默认4096，显式值不得超过65536。
+  uint32 mms_event_queue_capacity = 10;
+  // 单次DataCenter发布的最大点数；0使用默认256，显式值不得超过4096。
+  uint32 publish_batch_size = 11;
+  // DataCenter合批窗口；0使用默认20毫秒，显式值不得超过1000毫秒。
+  uint32 publish_batch_window_ms = 12;
+  // 下位机内部保护/联锁规则；动作路径不依赖DataCenter、gRPC或SQLite。
+  repeated ProtectionRule protection_rules = 13;
+  // SV额定频率，单位Hz；0表示兼容默认值50Hz，显式值只允许50Hz或60Hz。
+  double nominal_frequency_hz = 14;
+  // 实时线程CPU亲和性；为空表示不修改系统默认CPU集合。
+  repeated uint32 realtime_cpu_indices = 15;
+  // GOOSE、SV和保护线程的调度策略；未指定时使用普通调度。
+  ThreadSchedulingPolicy realtime_scheduling = 16;
+  // FIFO/RR实时优先级；普通调度时必须为0。
+  int32 realtime_priority = 17;
+  // 实时策略权限不足时降级继续运行，或严格失败停止IED通信功能。
+  ThreadRuntimeFailureMode realtime_failure_mode = 18;
+}
+
+// 点映射配置。
+message PointMapping {
+  string tag = 1;
+  string data_ref = 2;
+  FunctionalConstraint fc = 3;
+  PointSource source = 4;
+  PointValueType value_type = 5;
+  double scale = 6;
+  double offset = 7;
+  double deadband = 8;
+}
+
+// 一个IED的完整点映射。
+message PointMappings {
+  string conn_name = 1;
+  repeated PointMapping points = 2;
+}
+
+// 持久化的IED配置，不包含实时统计和活动通道。
+message PersistedIed {
+  IedConfig config = 1;
+  uint32 conn_id = 2;
+  bool desired_running = 3;
+  bool pending_delete = 4;
+}
+
+// IEC61850模块聚合配置快照。
+message PersistedConfig {
+  uint32 schema_version = 1;
+  repeated NormalizedSclModel models = 2;
+  repeated PersistedIed ieds = 3;
+  repeated PointMappings point_mappings = 4;
+  repeated string pending_connection_deletes = 5;
+}
+
+// 创建或更新IED配置。
+message UpsertIedRequest {
+  IedConfig config = 1;
+  bool create_only = 2;
+}
+
+// IED通道运行信息。
+message ChannelInfo {
+  NetworkChannelConfig config = 1;
+  ChannelState state = 2;
+  string last_error = 3;
+}
+
+// IED配置和运行信息。
+message IedInfo {
+  IedConfig config = 1;
+  uint32 conn_id = 2;
+  IedState state = 3;
+  NetworkChannel active_channel = 4;
+  repeated ChannelInfo channels = 5;
+  string last_error = 6;
+  bool data_center_available = 7;
+}
+
+// 按连接名查询IED。
+message GetIedRequest {
+  string conn_name = 1;
+}
+
+// IED列表。
+message ListIedsResponse {
+  repeated IedInfo ieds = 1;
+}
+
+// 删除IED配置。
+message DeleteIedRequest {
+  string conn_name = 1;
+}
+
+// 启动IED通信功能。
+message StartIedRequest {
+  string conn_name = 1;
+}
+
+// 停止IED通信功能。
+message StopIedRequest {
+  string conn_name = 1;
+}
+
+// 全量或增量更新IED点映射。
+message UpsertPointMappingsRequest {
+  string conn_name = 1;
+  repeated PointMapping points = 2;
+  bool replace = 3;
+}
+
+// 查询IED点映射。
+message GetPointMappingsRequest {
+  string conn_name = 1;
+}
+
+// IED运行统计。
+message RuntimeStatistics {
+  string conn_name = 1;
+  uint64 mms_reports_received = 2;
+  uint64 mms_events_dropped = 3;
+  uint64 mms_queue_high_watermark = 4;
+  uint64 data_center_batches_published = 5;
+  uint64 data_center_publish_failures = 6;
+  uint64 goose_frames_received = 7;
+  uint64 goose_frames_sent = 8;
+  uint64 goose_frames_invalid = 9;
+  uint64 goose_timeouts = 10;
+  uint64 sv_frames_received = 11;
+  uint64 sv_frames_invalid = 12;
+  uint64 sv_samples_dropped = 13;
+  // 协议栈报告的MMS重连尝试次数；后续连接成功不重复计数。
+  uint64 reconnect_count = 14;
+  uint64 last_event_ts_ms = 15;
+  uint64 mms_values_unmapped = 16;
+  uint64 mms_values_type_mismatch = 17;
+  uint64 mms_values_invalid = 18;
+  uint64 mms_values_deadband_filtered = 19;
+  // 因原始可变长值或映射后单点超过安全字节边界而拒绝的点数。
+  uint64 mms_values_oversized = 20;
+  // 因成员超限或累计保留内存超限而整份拒绝的MMS报告数。
+  uint64 mms_reports_oversized = 21;
+  // 当前模块生命周期内该IED的MMS队列估算保留内存最高水位。
+  uint64 mms_queue_bytes_high_watermark = 22;
+}
+
+// 查询IED运行统计。
+message GetRuntimeStatisticsRequest {
+  string conn_name = 1;
+}
+
+// 聚合目标态中的一个SCL模型。
+message SclModelTarget {
+  string model_name = 1;
+  string source_name = 2;
+  bytes content = 3;
+}
+
+// 聚合目标态中的一个IED及其完整点映射。
+message IedTarget {
+  IedConfig config = 1;
+  repeated PointMapping points = 2;
+  bool desired_running = 3;
+}
+
+// IEC61850模块完整目标态，适用于ConfigPusher启动编排。
+message ApplyTargetConfigRequest {
+  repeated SclModelTarget models = 1;
+  repeated IedTarget ieds = 2;
+}
+
+// 完整目标态应用结果。
+message ApplyTargetConfigResponse {
+  repeated SclModelSummary models = 1;
+  repeated IedInfo ieds = 2;
+  repeated ValidationIssue issues = 3;
+}
+
+// IEC61850下位机控制面服务。数据采集结果通过DataCenter异步发布，GOOSE/SV实时保护路径不经过gRPC。
+service IEC61850Service {
+  // 原子应用IEC61850完整目标态，用于ConfigPusher启动编排。
+  // - 所有SCL和IED配置先完成解析与校验，任一失败时不停止、删除或覆盖当前配置。
+  // - 本地配置以单个聚合快照保存；请求中未声明的旧模型、IED和点映射被移出目标态。
+  // - DataCenter不可用时仍保存本地目标态并在IedInfo中报告降级；纯GOOSE/SV内部功能不依赖DataCenter。
+  // - 成功后按desired_running或auto_start恢复IED通信功能。
+  // - 副作用：更新SQLite、DataCenter稳定连接/标签及模块内通信功能。
+  // - 常见错误：INVALID_ARGUMENT、FAILED_PRECONDITION、RESOURCE_EXHAUSTED、INTERNAL。
+  rpc ApplyTargetConfig(ApplyTargetConfigRequest) returns (ApplyTargetConfigResponse);
+
+  // 导入或仅校验SCD/CID/ICD内容。
+  // - validate_only=true时不修改内存、SQLite或运行态，可重复调用。
+  // - replace=true允许替换同名且未被运行中IED使用的模型；否则同名返回ALREADY_EXISTS。
+  // - 副作用：非校验模式成功后原子保存聚合配置快照。
+  // - 常见错误：INVALID_ARGUMENT、ALREADY_EXISTS、FAILED_PRECONDITION、RESOURCE_EXHAUSTED、INTERNAL。
+  rpc ImportScl(ImportSclRequest) returns (ImportSclResponse);
+
+  // 查询一个已导入模型的摘要，不返回可能很大的完整规范化模型。
+  // - 只读且幂等，无运行态和落盘副作用。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND。
+  rpc GetModelSummary(GetModelSummaryRequest) returns (SclModelSummary);
+
+  // 列出全部已导入模型摘要。
+  // - 只读且幂等，按model_name稳定排序。
+  rpc ListModels(Empty) returns (ListModelsResponse);
+
+  // 删除一个未被任何IED配置引用的模型。
+  // - 成功后原子保存聚合配置快照；不存在视为幂等成功。
+  // - 常见错误：INVALID_ARGUMENT、FAILED_PRECONDITION、INTERNAL。
+  rpc DeleteModel(DeleteModelRequest) returns (Empty);
+
+  // 创建或更新一个逻辑IED及其A/B网络配置。
+  // - create_only=true且conn_name已存在时返回ALREADY_EXISTS。
+  // - 配置成功不代表IED通信功能已启动；运行中IED禁止修改关键通道和模型字段。
+  // - DataCenter暂时不可用时保留已落盘目标配置并在IedInfo中报告降级，不阻止纯GOOSE/SV内部功能配置。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND、ALREADY_EXISTS、FAILED_PRECONDITION、INTERNAL。
+  rpc UpsertIed(UpsertIedRequest) returns (IedInfo);
+
+  // 查询单个IED配置和运行状态。
+  // - 只读且幂等。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND。
+  rpc GetIed(GetIedRequest) returns (IedInfo);
+
+  // 列出全部IED配置和运行状态。
+  // - 只读且幂等，按conn_name稳定排序。
+  rpc ListIeds(Empty) returns (ListIedsResponse);
+
+  // 停止IED通信功能，删除本地配置并尝试删除DataCenter稳定连接。
+  // - DataCenter删除失败时标记PENDING_DELETE并保留本地配置供重试。
+  // - 本地不存在视为幂等成功。
+  // - 常见错误：INVALID_ARGUMENT、FAILED_PRECONDITION、INTERNAL、UNAVAILABLE。
+  rpc DeleteIed(DeleteIedRequest) returns (Empty);
+
+  // 启动指定IED的MMS、GOOSE和SV通信功能。
+  // - 幂等；已运行时返回OK。
+  // - 成功要求所有已启用功能满足最小配置，DataCenter不可用只会使异步发布降级。
+  // - 副作用：创建网络会话、raw socket和工作线程，并保存desired_running=true。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND、FAILED_PRECONDITION、PERMISSION_DENIED、INTERNAL。
+  rpc StartIed(StartIedRequest) returns (Empty);
+
+  // 停止指定IED的全部通信功能和工作线程。
+  // - 幂等；仅停止功能，不删除配置、模型或DataCenter连接。
+  // - 副作用：保存desired_running=false。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND、INTERNAL。
+  rpc StopIed(StopIedRequest) returns (Empty);
+
+  // 更新IED的data_ref到DataCenter tag映射。
+  // - replace=true为全量替换，false为按tag和data_ref增量合并。
+  // - 运行中IED禁止修改映射；成功后同步DataCenter连接标签，DataCenter不可用时记录待重试状态。
+  // - 副作用：原子保存聚合配置快照。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND、ALREADY_EXISTS、FAILED_PRECONDITION、INTERNAL。
+  rpc UpsertPointMappings(UpsertPointMappingsRequest) returns (Empty);
+
+  // 查询一个IED的完整点映射。
+  // - 只读且幂等。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND。
+  rpc GetPointMappings(GetPointMappingsRequest) returns (PointMappings);
+
+  // 查询一个IED从模块启动以来的运行统计。
+  // - 只读且幂等；统计不落盘，模块重启后清零。
+  // - 常见错误：INVALID_ARGUMENT、NOT_FOUND。
+  rpc GetRuntimeStatistics(GetRuntimeStatisticsRequest) returns (RuntimeStatistics);
+}
