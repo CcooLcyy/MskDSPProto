@@ -60,7 +60,7 @@ message MemberConfig {
   double capacity_kw = 3;
   // 分配权重：平均分配 weight=1；按容量比例 weight=capacity_kw
   double weight      = 4;
-  // 约束（kW）；若未配置可由上位机填 0/capacity_kw
+  // 约束（kW）；capacity_kw 必须配置为大于 0 的有限数值
   double min_kw      = 5;
   double max_kw      = 6;
 
@@ -122,6 +122,8 @@ enum DefaultPointKind {
   DEFAULT_POINT_KIND_DYNAMIC_LOWER      = 3;
   DEFAULT_POINT_KIND_DYNAMIC_UPPER      = 4;
   DEFAULT_POINT_KIND_COMMAND_ECHO       = 5;
+  // 当前控制组所有成员 capacity_kw 之和（单位：kW）
+  DEFAULT_POINT_KIND_INSTALLED_CAPACITY = 6;
 }
 
 // AGC 默认点元数据：用于上位机发现控制组自动生成的内建点及其路由 tag。
