@@ -179,7 +179,15 @@ message SendTimeSyncRequest {
   int64 ts_ms = 2;
 }
 
-// 固定随机模拟值的工程量快照。
+// 模拟值生成模式。
+enum SimulationMode {
+  // 保持原有随机模拟行为。
+  SIMULATION_MODE_RANDOM = 0;
+  // FLOAT 遥测按 IOA 升序连续递增。
+  SIMULATION_MODE_INCREMENT = 1;
+}
+
+// 模拟值的工程量快照。
 message SimulationPoint {
   string tag = 1;
   PointType type = 2;
@@ -198,6 +206,8 @@ message SimulationSnapshot {
 
 message SimulationRequest {
   string conn_name = 1;
+  // 仅 GenerateSimulationValues 使用；其他模拟值接口忽略该字段。
+  SimulationMode mode = 2;
 }
 
 // IEC104 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停链路。
@@ -249,8 +259,8 @@ service IEC104Service {
   // - 常见错误：NOT_FOUND（conn_name 不存在）、FAILED_PRECONDITION（链路未运行/角色不允许）。
   // - 副作用：发送对时命令到 IEC104 链路，并记录日志。
   rpc SendTimeSync(SendTimeSyncRequest) returns (Empty);
-  // 生成一批固定随机模拟值。仅允许 ROLE_SERVER + STATION_ROLE_SLAVE；每个点生成一次值并保持不变，
-  // 再次调用才会替换值。值只保存在 IEC104 内存中，不创建/写入 DataCenter Route，不落盘。
+  // 生成一批固定模拟值。仅允许 ROLE_SERVER + STATION_ROLE_SLAVE；随机模式保持原有行为，递增模式对 FLOAT 遥测按 IOA 升序从 1 开始按 1 连续编号，
+  // 每个点生成一次值并保持不变，再次调用才会替换值。值只保存在 IEC104 内存中，不创建/写入 DataCenter Route，不落盘。
   // 非幂等：重复调用会重新生成并替换当前快照；无点表或角色不符返回 FAILED_PRECONDITION。
   rpc GenerateSimulationValues(SimulationRequest) returns (SimulationSnapshot);
   // 查询当前固定模拟值；没有生成值时返回空快照。只读、无副作用；连接不存在返回 NOT_FOUND。
