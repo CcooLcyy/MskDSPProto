@@ -138,6 +138,16 @@ enum PointType {
   POINT_TYPE_SINGLE      = 2;
 }
 
+// IEC104 点位业务类型；与协议数据类型独立，便于区分遥测/遥调等同为 FLOAT 的点。
+enum PointBusinessType {
+  POINT_BUSINESS_TYPE_UNSPECIFIED = 0;
+  POINT_BUSINESS_TYPE_TELEINDICATION = 1;
+  POINT_BUSINESS_TYPE_TELEMETRY = 2;
+  POINT_BUSINESS_TYPE_REMOTE_ADJUST = 3;
+  POINT_BUSINESS_TYPE_REMOTE_CONTROL = 4;
+  POINT_BUSINESS_TYPE_PARAMETER = 5;
+}
+
 message Point {
   string    tag  = 1;
   uint32    ioa  = 2;
@@ -149,6 +159,8 @@ message Point {
   // 死区：工程量单位，<=0 表示不过滤。
   // 仅对 POINT_TYPE_FLOAT 生效；POINT_TYPE_SINGLE 忽略该字段。
   double deadband = 6;
+  // 业务类型；未填写时由 IEC104 按兼容规则从 IOA/协议类型推导。
+  PointBusinessType business_type = 7;
 }
 
 message UpsertPointTableRequest {
