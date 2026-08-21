@@ -130,6 +130,10 @@ enum DefaultPointKind {
   DEFAULT_POINT_KIND_TOTAL_Q_MEAS       = 8;
   DEFAULT_POINT_KIND_TOTAL_Q_ERROR      = 9;
   DEFAULT_POINT_KIND_VOLTAGE_ERROR      = 10;
+  // 控制组是否投入 AVC 自动控制功能（BOOL，默认 true）。
+  DEFAULT_POINT_KIND_FUNCTION_ENABLE    = 11;
+  // 控制组是否允许远方命令（BOOL，默认 true）。
+  DEFAULT_POINT_KIND_REMOTE_OPERATION   = 12;
 }
 
 // AVC 默认点元数据：用于上位机发现控制组自动生成的内建点及其路由 tag。
@@ -148,6 +152,9 @@ message GroupInfo {
   string last_error = 4;
   // AVC 自动生成的默认点列表（已注册到本控制组 conn_id 的 DataCenter 连接标签注册表）。
   repeated DefaultPointInfo default_points = 5;
+  // 当前运行时控制状态；不落盘，创建或恢复时默认均为 true。
+  bool function_enabled = 6;
+  bool remote_enabled = 7;
 }
 
 message UpsertGroupRequest {
