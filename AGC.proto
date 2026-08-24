@@ -177,6 +177,119 @@ message ListGroupsResponse {
   repeated GroupInfo groups = 1;
 }
 
+// 单个成员的固定控制参数。参数由调试测试得到并人工确认后保存；正式运行时不自动学习这些系数。
+message MemberControlProfile {
+  string member_name = 1;
+  // 上调时的比例系数：根据当前总量/成员误差立即产生补偿。
+  double up_p_gain = 2;
+  // 上调时的积分系数：消除持续存在的静态偏差。
+  double up_i_gain = 3;
+  // 下调时的比例系数。
+  double down_p_gain = 4;
+  // 下调时的积分系数。
+  double down_i_gain = 5;
+  // 上调时的固定特性补偿（kW），用于修正设备长期静态偏差。
+  double up_bias_kw = 6;
+  // 下调时的固定特性补偿（kW）。
+  double down_bias_kw = 7;
+  // 积分记忆最大绝对值（kW）。
+  double integral_limit_kw = 8;
+  // 单次最大目标变化量（kW）；0 表示由 AGC 默认策略限制。
+  double max_step_kw = 9;
+  // 最大目标变化速率（kW/s）；0 表示不额外限速。
+  double max_ramp_kw_per_s = 10;
+  // 参数确认时的版本号，供上位机识别参数变更。
+  uint64 version = 11;
+  // 参数确认时间（Unix 毫秒）。
+  uint64 confirmed_at_ms = 12;
+}
+
+// 一个控制组的正式成员控制参数集合。
+message GroupControlProfile {
+  string group_name = 1;
+  repeated MemberControlProfile members = 2;
+  uint64 version = 3;
+  uint64 confirmed_at_ms = 4;
+}
+
+// AGC 固定控制参数持久化集合，与 GroupsConfig 分开保存，避免配置更新覆盖已确认参数。
+message ControlProfilesConfig {
+  repeated GroupControlProfile profiles = 1;
+}
+
+// 自动调试测试配置。测试对象是整个 AGC 控制组，目标值由 AGC 按原分配策略拆分到所有成员。
+message TuningConfig {
+  // 测试总目标下限/上限（kW）。程序在范围内自动选择交替的上调/下调目标。
+  double target_lower_kw = 1;
+  double target_upper_kw = 2;
+  // 整个调试任务最大运行时间（分钟）。
+  uint32 total_time_minutes = 3;
+  // 单次上调或下调目标的最大尝试时间（分钟）。
+  uint32 attempt_max_time_minutes = 4;
+  // 从下发目标到首次进入目标精度范围的性能目标（秒）。
+  uint32 target_entry_time_seconds = 5;
+  // 进入目标精度范围后连续保持的稳定确认时间（秒）。
+  uint32 stable_hold_time_seconds = 6;
+  // 最低有效上调次数，当前要求至少为 3。
+  uint32 min_up_tests = 7;
+  // 最低有效下调次数，当前要求至少为 3。
+  uint32 min_down_tests = 8;
+  // 总量达标精度（kW）。
+  double total_tolerance_kw = 9;
+}
+
+enum TuningState {
+  TUNING_STATE_UNSPECIFIED = 0;
+  TUNING_STATE_IDLE = 1;
+  TUNING_STATE_RUNNING = 2;
+  TUNING_STATE_COMPLETED = 3;
+  TUNING_STATE_STOPPED = 4;
+  TUNING_STATE_FAILED = 5;
+}
+
+enum TuningDirection {
+  TUNING_DIRECTION_UNSPECIFIED = 0;
+  TUNING_DIRECTION_UP = 1;
+  TUNING_DIRECTION_DOWN = 2;
+}
+
+message StartTuningRequest {
+  string group_name = 1;
+  TuningConfig config = 2;
+}
+
+message StopTuningRequest {
+  string group_name = 1;
+}
+
+message GetTuningStatusRequest {
+  string group_name = 1;
+}
+
+message GetControlProfileRequest {
+  string group_name = 1;
+}
+
+message ConfirmControlProfileRequest {
+  GroupControlProfile profile = 1;
+}
+
+message TuningStatus {
+  string group_name = 1;
+  TuningState state = 2;
+  TuningDirection direction = 3;
+  uint32 completed_up_tests = 4;
+  uint32 completed_down_tests = 5;
+  uint64 started_at_ms = 6;
+  uint64 elapsed_ms = 7;
+  double current_target_kw = 8;
+  double current_total_meas_kw = 9;
+  double target_entry_elapsed_seconds = 10;
+  double stable_elapsed_seconds = 11;
+  string last_error = 12;
+  GroupControlProfile candidate_profile = 13;
+}
+
 // AGC 模块对外 gRPC 服务（控制面）：用于上位机配置/启停 AGC 控制组（group）。
 // - 每个 group 通过 DataCenter 分配/持久化一个 conn_id，并通过 tag 与外部连接完成“命令输入/量测汇总/设定输出”的数据闭环。
 service AGCService {
@@ -203,4 +316,16 @@ service AGCService {
   // 停止控制组：停止事件触发控制任务，并停止与 DataCenter 的订阅/发布通道（若有）。
   // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。
   rpc StopGroup(StopGroupRequest) returns (Empty);
+  // 启动控制组自动参数调试。调试期间所有成员一起参与上调/下调测试，目标在配置范围内由 AGC 自动选择。
+  // - 同一控制组同时只能有一个调试任务；控制组必须存在且已停止正式控制。
+  // - 返回：当前调试状态。测试候选参数在 ConfirmControlProfile 前不会替换正式参数。
+  rpc StartTuning(StartTuningRequest) returns (TuningStatus);
+  // 停止控制组自动参数调试；已完成的候选结果保留在状态中，但不会自动投入正式控制。
+  rpc StopTuning(StopTuningRequest) returns (TuningStatus);
+  // 查询自动参数调试状态、进度和候选参数。
+  rpc GetTuningStatus(GetTuningStatusRequest) returns (TuningStatus);
+  // 查询当前已确认并持久化的控制参数。
+  rpc GetControlProfile(GetControlProfileRequest) returns (GroupControlProfile);
+  // 人工确认并持久化调试候选参数；参数必须覆盖当前控制组全部可控成员且通过范围校验。
+  rpc ConfirmControlProfile(ConfirmControlProfileRequest) returns (GroupControlProfile);
 }
