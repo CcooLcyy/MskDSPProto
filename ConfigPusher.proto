@@ -9,6 +9,7 @@ import "ModbusRTU.proto";
 import "AGC.proto";
 import "AVC.proto";
 import "Calc.proto";
+import "ControlOrchestrator.proto";
 
 message Empty {}
 
@@ -152,6 +153,10 @@ message CalcConfig {
   repeated CalcGroupTask groups = 1;
 }
 
+message ControlOrchestratorConfig {
+  repeated ControlOrchestratorProto.WorkflowConfig sequences = 1;
+}
+
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
@@ -162,6 +167,7 @@ message Config {
   AvcConfig avc = 6;
   CalcConfig calc = 7;
   Iec61850Config iec61850 = 8;
+  ControlOrchestratorConfig control_orchestrator = 9;
 }
 
 message DataCenterConnTags {

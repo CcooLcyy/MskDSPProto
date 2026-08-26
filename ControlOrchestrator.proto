@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package ControlOrchestratorProto;
+
+import "DataCenter.proto";
+
+// 编排步骤中的 DataCenter 源端点和值来源。
+message CommandStep {
+  // 步骤名称；同一编排内必须唯一。
+  string step_name = 1;
+  // DataCenter 稳定源端点；编排模块按该端点调用 ExecuteCommand，再由路由转发到协议模块。
+  DataCenterProto.Endpoint source = 2;
+  // 固定执行值；use_trigger_value=true 时忽略该字段并使用执行请求触发值。
+  DataCenterProto.PointValue value = 3;
+  // 是否使用 ExecuteRequest.trigger_value 作为本步骤值。
+  bool use_trigger_value = 4;
+  // 本步骤同步命令超时，必须大于 0。
+  uint32 timeout_ms = 5;
+  // 本步骤成功后、下一步骤开始前的等待时间。
+  uint32 delay_after_ms = 6;
+}
+
+// 一个按固定顺序执行的线性命令编排。
+message WorkflowConfig {
+  // 稳定编排名称。
+  string sequence_name = 1;
+  // 固定顺序步骤，数量限制为 1~8。
+  repeated CommandStep steps = 2;
+}
+
+message SequencesConfig {
+  repeated WorkflowConfig configs = 1;
+}
+
+message UpsertSequenceRequest {
+  WorkflowConfig config = 1;
+  // true 时仅允许新增；false 时允许新增或覆盖。
+  bool create_only = 2;
+}
+
+message GetSequenceRequest { string sequence_name = 1; }
+message DeleteSequenceRequest { string sequence_name = 1; }
+message ListSequencesRequest {}
+message ListSequencesResponse { repeated WorkflowConfig configs = 1; }
+
+// 编排执行请求。
+message ExecuteSequenceRequest {
+  string sequence_name = 1;
+  // 触发端点，用于审计和生成关联请求；可为空。
+  DataCenterProto.Endpoint trigger = 2;
+  // use_trigger_value 步骤使用的值。
+  DataCenterProto.PointValue trigger_value = 3;
+  string request_id = 4;
+  // 总超时预留字段；0 表示由步骤 timeout_ms 控制。
+  uint32 timeout_ms = 5;
+}
+
+message ExecuteSequenceResponse {
+  bool accepted = 1;
+  uint32 executed_steps = 2;
+  uint32 failed_step_index = 3;
+  string failed_step_name = 4;
+  string reason = 5;
+}
+
+// 控制编排服务：提供配置管理和同步线性执行能力。
+service ControlOrchestratorService {
+  // 新增或更新编排；create_only=true 时已有名称返回 ALREADY_EXISTS。
+  rpc UpsertSequence(UpsertSequenceRequest) returns (WorkflowConfig);
+  // 查询指定编排；不存在返回 NOT_FOUND。
+  rpc GetSequence(GetSequenceRequest) returns (WorkflowConfig);
+  // 列出全部编排；无副作用。
+  rpc ListSequences(ListSequencesRequest) returns (ListSequencesResponse);
+  // 删除指定编排；不存在返回 NOT_FOUND。
+  rpc DeleteSequence(DeleteSequenceRequest) returns (DataCenterProto.Empty);
+  // 按步骤顺序同步执行；任一步非 ACCEPTED 时立即停止。
+  rpc ExecuteSequence(ExecuteSequenceRequest) returns (ExecuteSequenceResponse);
+}
