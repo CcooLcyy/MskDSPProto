@@ -267,6 +267,28 @@ message GetSourceLatestResponse {
   repeated SourcePointUpdate updates = 1;
 }
 
+// DataCenter 路由转发吞吐量的单秒采样。
+message ThroughputSample {
+  // 该秒采样的起始时间戳（毫秒）。
+  int64 timestamp_ms = 1;
+  // 该秒按路由生成的目的端点更新数量。
+  uint64 routed_points_per_second = 2;
+}
+
+// DataCenter 当前进程内的路由转发吞吐量窗口快照。
+message ThroughputSnapshot {
+  // DataCenter 进程启动时间戳（毫秒），上位机可据此识别重启。
+  int64 process_start_time_ms = 1;
+  // 最近窗口内实际产生过数据的秒级采样。
+  repeated ThroughputSample samples = 2;
+  // 当前秒按路由生成的目的端点更新数量。
+  uint64 current_points_per_second = 3;
+  // 最近窗口内的最大秒级目的端点更新数量。
+  uint64 peak_points_per_second = 4;
+  // 本次快照生成时间戳（毫秒）。
+  int64 updated_at_ms = 5;
+}
+
 // 通用同步命令执行服务：需要参与协议级命令确认的模块实现该服务。
 service CommandExecutor {
   // 同步校验并执行一个命令点。
@@ -366,6 +388,12 @@ service DataCenterService {
   // - tags 为空：返回该 conn_id 下全部已缓存点；否则只返回过滤集合。
   // - 常见错误：INVALID_ARGUMENT（conn_id=0 或 tags 含空字符串）。
   rpc GetLatest(GetLatestRequest) returns (GetLatestResponse);
+
+  // 查询 DataCenter 路由转发吞吐量（窗口快照）。
+  // - 统计口径为 Publish/BatchPublish 按路由生成的目的端点更新数量，不统计源点入站数或订阅投递数。
+  // - 仅统计当前进程内存，进程重启后窗口清空；调用幂等且无副作用。
+  // - 常见错误：INTERNAL（统计快照无法读取）。
+  rpc GetThroughputSnapshot(Empty) returns (ThroughputSnapshot);
 
   // 订阅目的连接的数据更新（服务端流，best-effort）。
   // - tags 为空：订阅该 conn_id 下全部点；否则仅订阅过滤集合。
