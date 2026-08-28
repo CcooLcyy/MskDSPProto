@@ -340,6 +340,16 @@ message NormalizedSclModel {
 }
 
 // 模型摘要。
+message SclAccessPointSummary {
+  string name = 1;
+  bool has_server = 2;
+}
+
+message SclIedSummary {
+  string name = 1;
+  repeated SclAccessPointSummary access_points = 2;
+}
+
 message SclModelSummary {
   string model_name = 1;
   string source_name = 2;
@@ -353,6 +363,8 @@ message SclModelSummary {
   uint32 gse_control_count = 10;
   uint32 sampled_value_control_count = 11;
   uint32 external_reference_count = 12;
+  // 供上位机级联选择使用的IED和AccessPoint轻量目录，不包含完整SCL模型对象。
+  repeated SclIedSummary ieds = 13;
 }
 
 // 导入或校验SCL模型。
