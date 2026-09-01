@@ -18,6 +18,32 @@ message CommandStep {
   uint32 timeout_ms = 5;
   // 本步骤成功后、下一步骤开始前的等待时间。
   uint32 delay_after_ms = 6;
+  // 本步骤命令接受后可选的遥信确认与失败处理。
+  StepVerification verification = 7;
+}
+
+// 步骤执行后的状态确认。
+message StepVerification {
+  // 状态源端点；通过 DataCenter 最新源值接口读取。
+  DataCenterProto.Endpoint status_source = 1;
+  // 期望状态值，当前必须为 BOOL。
+  DataCenterProto.PointValue expected_value = 2;
+  // 等待状态达到期望值的超时时间。
+  uint32 wait_timeout_ms = 3;
+  // 轮询间隔；必须大于 0。
+  uint32 poll_interval_ms = 4;
+  enum FailureAction {
+    // 状态确认失败后停止编排。
+    STOP = 0;
+    // 状态确认失败后重新执行本步骤命令。
+    RETRY_COMMAND = 1;
+  }
+  // 状态确认失败处理策略。
+  FailureAction failure_action = 5;
+  // RETRY_COMMAND 允许的额外执行次数。
+  uint32 max_retries = 6;
+  // 重试前等待时间。
+  uint32 retry_interval_ms = 7;
 }
 
 // 一个按固定顺序执行的线性命令编排。
@@ -26,6 +52,8 @@ message WorkflowConfig {
   string sequence_name = 1;
   // 固定顺序步骤，数量限制为 1~8。
   repeated CommandStep steps = 2;
+  // 可选触发源端点。配置后，DataCenter 将该源点路由到 ControlOrchestrator。
+  DataCenterProto.Endpoint trigger = 3;
 }
 
 message SequencesConfig {
@@ -61,6 +89,8 @@ message ExecuteSequenceResponse {
   uint32 failed_step_index = 3;
   string failed_step_name = 4;
   string reason = 5;
+  // 失败步骤关联的 DataCenter 命令状态；未执行到命令时为 COMMAND_STATUS_UNSPECIFIED。
+  DataCenterProto.CommandStatus failed_command_status = 6;
 }
 
 // 控制编排服务：提供配置管理和同步线性执行能力。

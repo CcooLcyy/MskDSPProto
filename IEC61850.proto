@@ -350,6 +350,15 @@ message SclIedSummary {
   repeated SclAccessPointSummary access_points = 2;
 }
 
+// 供上位机选择A/B通道网段使用的ConnectedAP轻量摘要。
+// 仅保留IED、AccessPoint和网段标识，不包含完整地址及GOOSE/SV对象。
+message SclConnectedApSummary {
+  string ied_name = 1;
+  string ap_name = 2;
+  string subnetwork_name = 3;
+  string network_type = 4;
+}
+
 message SclModelSummary {
   string model_name = 1;
   string source_name = 2;
@@ -365,6 +374,8 @@ message SclModelSummary {
   uint32 external_reference_count = 12;
   // 供上位机级联选择使用的IED和AccessPoint轻量目录，不包含完整SCL模型对象。
   repeated SclIedSummary ieds = 13;
+  // 供上位机按IED和AccessPoint筛选A/B通道候选网段。
+  repeated SclConnectedApSummary connected_access_points = 14;
 }
 
 // 导入或校验SCL模型。

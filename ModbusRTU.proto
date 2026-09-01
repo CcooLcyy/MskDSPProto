@@ -154,6 +154,14 @@ message UpdateConfigResponse {
   string message = 2;
 }
 
+// 查询全局 MQTT 配置的结果。
+// configured=false 表示模块当前没有可用的 MQTT 配置，mqtt 字段不会被填充。
+message GetConfigResponse {
+  bool configured = 1;
+  MqttConfig mqtt = 2;
+  string message = 3;
+}
+
 message UpsertLinkRequest {
   LinkConfig config = 1;
   // true: 若已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置
@@ -280,6 +288,10 @@ service ModbusRTUService {
   // - 模块启动并恢复本地持久化配置后，满足最小可运行条件的链路仍可能基于已恢复的 MQTT 配置自动恢复运行。
   // - 常见错误：INVALID_ARGUMENT（连接参数为空/不完整）。
   rpc UpdateConfig(UpdateConfigRequest) returns (UpdateConfigResponse);
+  // 查询当前全局 MQTT 连接参数，只读且幂等，不会修改配置或启动连接功能。
+  // - 成功且已配置时返回 configured=true 及 mqtt；配置缺失或不完整时仍返回 gRPC OK，但 configured=false 并附带中文原因。
+  // - 常见错误：INVALID_ARGUMENT（响应参数为空，仅适用于进程内调用）；FAILED_PRECONDITION（模块未就绪）。
+  rpc GetConfig(Empty) returns (GetConfigResponse);
   // 创建/更新一条 ModbusRTU 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
   // - 校验：
