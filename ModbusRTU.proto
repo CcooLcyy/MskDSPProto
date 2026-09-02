@@ -99,7 +99,7 @@ message LinkConfig {
   // - TRANSPORT_SERIAL：表示本地串口 device + 串口参数；
   // - TRANSPORT_MQTT_UART：表示远端 uartManager 串口参数（device 忽略）。
   SerialConfig serial = 2;
-  // 目标设备地址（1..247）；轮询与写寄存器均使用该地址。
+  // 目标设备地址（1..247）；轮询与写点均使用该地址。
   uint32 device_id = 3;
   // 轮询周期，单位毫秒（0 表示使用默认值）
   uint32 poll_interval_ms = 4;
@@ -200,6 +200,7 @@ enum FunctionCode {
   FUNCTION_READ_INPUT_REGISTERS = 3;   // 0x04
   FUNCTION_WRITE_SINGLE_REGISTER = 4;  // 0x06
   FUNCTION_WRITE_MULTIPLE_REGISTERS = 5; // 0x10
+  FUNCTION_WRITE_SINGLE_COIL = 6;      // 0x05
 }
 
 enum DataType {
@@ -236,11 +237,11 @@ message Point {
   FunctionCode function = 2;
   uint32 address = 3;
   // 当前 INT16/INT32 仅寄存器功能码支持（0x03/0x04/0x10）。
-  // 其中 0x06 仅允许 UINT16/INT16。
+  // 其中 0x06 允许 UINT16/INT16/BOOL；0x05 仅允许 BOOL。
   DataType type = 4;
   // 标度与偏移：
   // - 读寄存器：工程量换算 value = raw * scale + offset；
-  // - 写寄存器：反向换算 raw = (value - offset) / scale；
+  // - 写寄存器：反向换算 raw = (value - offset) / scale；BOOL 写点忽略 scale/offset；
   // - scale=0 视为 1。
   double scale = 5;
   double offset = 6;
@@ -280,7 +281,7 @@ message PointTablesConfig {
 }
 
 // ModbusRTU 模块对外 gRPC 服务（控制面）：用于上位机配置串口链路与点表，以及启停连接功能。
-// 数据面通过 DataCenter 完成转发闭环：轮询后 Publish 点值，写点通过 Subscribe 触发写寄存器。
+// 数据面通过 DataCenter 完成转发闭环：轮询后 Publish 点值，写点通过 Subscribe 触发 Modbus 写功能码。
 service ModbusRTUService {
   // 更新全局配置（MQTT 连接参数），非幂等，成功后覆盖原配置。
   // - 仅 TRANSPORT_MQTT_UART 链路在启动连接功能时使用。
@@ -314,7 +315,7 @@ service ModbusRTUService {
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
   // - 幂等：DataCenter 返回 NOT_FOUND 时视为“已删除”，返回 OK。
   rpc DeleteLink(DeleteLinkRequest) returns (Empty);
-  // 启动链路连接功能（轮询 + 可选写寄存器订阅）。
+  // 启动链路连接功能（轮询 + 可选写点订阅）。
   // - TRANSPORT_SERIAL：通过本地串口执行轮询。
   // - TRANSPORT_MQTT_UART：通过 MQTTManager + uartManager 透传 RTU 原始帧。
   // - 本 RPC 是显式启动链路连接功能的唯一入口；配置类 RPC 成功后不会自动启动。
