@@ -241,7 +241,8 @@ message SimulationRequest {
 service IEC104Service {
   // 创建/更新一条 IEC104 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
-  // - role=ROLE_SERVER：会校验 local.port，并进行端口冲突/占用检查；role=ROLE_CLIENT：会校验 remote.ip/remote.port。
+  // - role=ROLE_SERVER：会校验 local.port 与 local.ip 格式，但不会在配置阶段检查本机是否拥有该地址、端口是否空闲或是否与其他停止链路冲突；role=ROLE_CLIENT：会校验 remote.ip/remote.port。
+  // - 监听地址、端口占用和服务端链路之间的端点冲突在 StartLink 或自动启动时检查；失败只影响启动，不丢弃已保存的链路与点表。
   // - 成功返回仅表示链路配置已生效并完成必要落盘，不表示链路连接功能已经启动。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。
   rpc UpsertLink(UpsertLinkRequest) returns (LinkInfo);

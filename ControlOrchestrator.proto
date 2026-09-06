@@ -8,7 +8,8 @@ import "DataCenter.proto";
 message CommandStep {
   // 步骤名称；同一编排内必须唯一。
   string step_name = 1;
-  // DataCenter 稳定源端点；编排模块按该端点调用 ExecuteCommand，再由路由转发到协议模块。
+  // 步骤实际目标的稳定端点。未配置 trigger 时，编排模块直接以该端点调用 DataCenter；
+  // 配置 trigger 时，上位机为步骤生成 ControlOrchestrator 内部输出端点并维护到该目标的路由。
   DataCenterProto.Endpoint source = 2;
   // 固定执行值；use_trigger_value=true 时忽略该字段并使用执行请求触发值。
   DataCenterProto.PointValue value = 3;
