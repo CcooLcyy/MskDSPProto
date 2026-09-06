@@ -3,6 +3,7 @@ syntax = "proto3";
 package ExportConfigProto;
 
 import "ConfigPusher.proto";
+import "AGC.proto";
 
 enum ExportScope {
   EXPORT_SCOPE_UNSPECIFIED = 0;
@@ -32,6 +33,21 @@ message ModuleStartup {
 
 message DataBusConfig {
   ConfigPusherProto.DataCenterRoutes routes = 1;
+  // DataCenter 稳定连接键；导入时按 module_name + conn_name 重新解析 conn_id。
+  repeated DataBusConnection connections = 2;
+  // DataCenter 连接标签注册表；旧导出文件缺少该字段时按空集合兼容。
+  repeated DataBusConnTags conn_tags = 3;
+}
+
+message DataBusConnection {
+  string module_name = 1;
+  string conn_name = 2;
+}
+
+message DataBusConnTags {
+  string module_name = 1;
+  string conn_name = 2;
+  repeated string tags = 3;
 }
 
 message FullConfigExport {
@@ -43,4 +59,6 @@ message FullConfigExport {
   ConfigPusherProto.Config config = 5;
   DataBusConfig data_bus = 6;
   ExportMetadata metadata = 7;
+  // AGC 已确认的固定控制参数；与 ConfigPusher 的控制组配置分开保存。
+  repeated AGCProto.GroupControlProfile agc_control_profiles = 8;
 }
