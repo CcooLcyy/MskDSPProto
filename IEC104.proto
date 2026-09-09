@@ -148,6 +148,24 @@ enum PointBusinessType {
   POINT_BUSINESS_TYPE_PARAMETER = 5;
 }
 
+// 遥控命令类型；仅对 POINT_BUSINESS_TYPE_REMOTE_CONTROL 生效。
+enum RemoteControlType {
+  REMOTE_CONTROL_TYPE_UNSPECIFIED = 0;
+  // C_SC_NA_1，使用 SCO bit0 表示分/合。
+  REMOTE_CONTROL_TYPE_SINGLE = 1;
+  // C_DC_NA_1，使用 DCO bit0~1 表示分/合。
+  REMOTE_CONTROL_TYPE_DOUBLE = 2;
+}
+
+// 遥控命令执行方式；仅对 POINT_BUSINESS_TYPE_REMOTE_CONTROL 生效。
+enum CommandExecutionMode {
+  COMMAND_EXECUTION_MODE_UNSPECIFIED = 0;
+  // 直接发送 S/E=0 并执行。
+  COMMAND_EXECUTION_MODE_DIRECT = 1;
+  // 先发送 S/E=1，收到选择正确认后再发送 S/E=0。
+  COMMAND_EXECUTION_MODE_SELECT_EXECUTE = 2;
+}
+
 message Point {
   string    tag  = 1;
   uint32    ioa  = 2;
@@ -161,6 +179,10 @@ message Point {
   double deadband = 6;
   // 业务类型；未填写时由 IEC104 按兼容规则从 IOA/协议类型推导。
   PointBusinessType business_type = 7;
+  // 遥控命令类型；未填写时兼容为单点遥控。
+  RemoteControlType remote_control_type = 8;
+  // 遥控执行方式；未填写时兼容为选择执行。
+  CommandExecutionMode command_execution_mode = 9;
 }
 
 message UpsertPointTableRequest {
