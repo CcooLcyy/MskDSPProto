@@ -75,6 +75,9 @@ message LinkConfig {
 
   // 点值上送是否带时标：false=不带时标（默认），true=带时标。
   bool point_with_time = 14;
+
+  // 从站收到 C_CS_NA_1 后是否直接设置本机系统时间；默认关闭。
+  bool set_system_time_on_sync = 15;
 }
 
 message LinkInfo {
