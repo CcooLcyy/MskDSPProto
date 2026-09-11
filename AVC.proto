@@ -23,13 +23,6 @@ enum DeltaBase {
   DELTA_BASE_BASE_TAG      = 3;
 }
 
-// 控制调度模式。未指定时兼容现有事件触发行为。
-enum ControlMode {
-  CONTROL_MODE_UNSPECIFIED = 0;
-  CONTROL_MODE_PI_EVENT = 1;
-  CONTROL_MODE_DIRECT_CYCLIC = 2;
-}
-
 // 一个点的描述：tag+单位+线性换算。
 // 输入值进入 AVC 内部时：绝对量 eng=value*scale+offset，增量量 eng_delta=value*scale。
 // AVC 输出到 DataCenter 时直接发布工程量，不按 scale/offset 反向换算。
@@ -70,6 +63,15 @@ message StrategyConfig {
   oneof strategy {
     WeightedStrategyConfig weighted = 1;
   }
+}
+
+// 控制组执行模式。
+enum ControlMode {
+  CONTROL_MODE_UNSPECIFIED = 0;
+  // 兼容模式：输入点变化时触发控制计算。
+  CONTROL_MODE_PI_EVENT = 1;
+  // 直周期模式：按计算周期执行，并按命令周期限制控制命令下发。
+  CONTROL_MODE_DIRECT_CYCLIC = 2;
 }
 
 // 成员（例如一个逆变器）
@@ -113,11 +115,10 @@ message GroupConfig {
   StrategyConfig strategy = 6;
   repeated MemberConfig members = 7;
 
-  // 控制模式；未指定等同于 PI_EVENT（保持向后兼容）。
   ControlMode control_mode = 8;
-  // 周期直分配模式的计算执行周期，单位秒，范围 1~15。
+  // 直周期模式下的计算执行周期，单位秒。
   double calculation_execution_period_seconds = 9;
-  // 周期直分配模式的命令控制最小间隔，单位秒，范围 4~30。
+  // 直周期模式下相邻控制命令的最小时间间隔，单位秒。
   double command_control_period_seconds = 10;
 }
 

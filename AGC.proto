@@ -12,15 +12,6 @@ enum ValueMode {
   VALUE_MODE_DELTA       = 2;
 }
 
-// 控制组控制方式。未指定时按 PI_EVENT 兼容处理。
-enum ControlMode {
-  CONTROL_MODE_UNSPECIFIED = 0;
-  // 现有事件触发 PI 控制方式。
-  CONTROL_MODE_PI_EVENT = 1;
-  // 按计算执行周期计算、按命令控制周期限频下发的直接分配方式。
-  CONTROL_MODE_DIRECT_CYCLIC = 2;
-}
-
 // 增量基准（仅在 mode=DELTA 时生效）
 enum DeltaBase {
   DELTA_BASE_UNSPECIFIED   = 0;
@@ -63,6 +54,15 @@ message StrategyConfig {
   }
 }
 
+// 控制组执行模式。
+enum ControlMode {
+  CONTROL_MODE_UNSPECIFIED = 0;
+  // 兼容模式：输入点变化时触发控制计算。
+  CONTROL_MODE_PI_EVENT = 1;
+  // 直周期模式：按计算周期执行，并按命令周期限制控制命令下发。
+  CONTROL_MODE_DIRECT_CYCLIC = 2;
+}
+
 // 成员（例如一个逆变器）
 message MemberConfig {
   string member_name = 1;
@@ -103,19 +103,18 @@ message GroupConfig {
   // 主站下发点（通过 DataCenter 路由进入 AGC 的 conn_id）
   ValueSpec p_cmd   = 2;
 
+  ControlMode control_mode = 7;
+  // 直周期模式下的计算执行周期，单位秒。
+  double calculation_execution_period_seconds = 8;
+  // 直周期模式下相邻控制命令的最小时间间隔，单位秒。
+  double command_control_period_seconds = 9;
+
   reserved 3;
   reserved "loop";
   StrategyConfig    strategy = 4;
 
   repeated MemberConfig members = 5;
   DerivedOutputs outputs = 6;
-
-  // 控制方式；未指定时按 CONTROL_MODE_PI_EVENT 处理。
-  ControlMode control_mode = 7;
-  // 计算执行周期（秒），仅 DIRECT_CYCLIC 生效，取值范围 1～15。
-  double calculation_execution_period_seconds = 8;
-  // 命令控制周期（秒），仅 DIRECT_CYCLIC 生效，取值范围 4～30。
-  double command_control_period_seconds = 9;
 }
 
 // 单条控制组持久化记录（用于 AGC 模块本地落盘持久化）。
