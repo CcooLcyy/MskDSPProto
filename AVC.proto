@@ -23,6 +23,13 @@ enum DeltaBase {
   DELTA_BASE_BASE_TAG      = 3;
 }
 
+// 控制调度模式。未指定时兼容现有事件触发行为。
+enum ControlMode {
+  CONTROL_MODE_UNSPECIFIED = 0;
+  CONTROL_MODE_PI_EVENT = 1;
+  CONTROL_MODE_DIRECT_CYCLIC = 2;
+}
+
 // 一个点的描述：tag+单位+线性换算。
 // 输入值进入 AVC 内部时：绝对量 eng=value*scale+offset，增量量 eng_delta=value*scale。
 // AVC 输出到 DataCenter 时直接发布工程量，不按 scale/offset 反向换算。
@@ -31,6 +38,10 @@ message SignalSpec {
   string unit   = 2;
   double scale  = 3;
   double offset = 4;
+  // Decimal20 倍率文本；非空时优先于旧 scale 字段。
+  string scale_decimal = 5;
+  // Decimal20 偏移文本；非空时优先于旧 offset 字段。
+  string offset_decimal = 6;
 }
 
 // 输入/输出点的值语义配置。
@@ -48,6 +59,9 @@ message VoltageControlConfig {
   double kp = 1;
   // 死区：|v_ref - v_meas| <= deadband 时，不再继续推动总无功目标变化。
   double deadband = 2;
+  // 以下 Decimal20 文本非空时分别优先于对应旧 double 字段。
+  string kp_decimal = 3;
+  string deadband_decimal = 4;
 }
 
 message WeightedStrategyConfig {}
@@ -74,6 +88,11 @@ message MemberConfig {
   SignalSpec q_meas  = 6;
   // 成员设定点（输出到 DataCenter，由有向路由转发给下游连接）
   ValueSpec  q_set   = 7;
+
+  // 以下 Decimal20 文本非空时分别优先于对应旧 double 字段。
+  string weight_decimal = 8;
+  string q_min_kvar_decimal = 9;
+  string q_max_kvar_decimal = 10;
 }
 
 // 一个 AVC 连接（conn_name）对应一个控制组。
@@ -93,6 +112,13 @@ message GroupConfig {
   VoltageControlConfig voltage_control = 5;
   StrategyConfig strategy = 6;
   repeated MemberConfig members = 7;
+
+  // 控制模式；未指定等同于 PI_EVENT（保持向后兼容）。
+  ControlMode control_mode = 8;
+  // 周期直分配模式的计算执行周期，单位秒，范围 1~15。
+  double calculation_execution_period_seconds = 9;
+  // 周期直分配模式的命令控制最小间隔，单位秒，范围 4~30。
+  double command_control_period_seconds = 10;
 }
 
 // 单条控制组持久化记录（用于 AVC 模块本地落盘持久化）。
@@ -210,12 +236,12 @@ service AVCService {
   // 删除控制组：停止并清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="AVC", group_name)）。
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码，提示上位机重试。
   rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
-  // 启动控制组：启动事件触发控制任务，并与 DataCenter 建立订阅/发布通道。
+  // 启动控制组：按控制组配置启动 PI 事件或周期直分配任务，并与 DataCenter 建立订阅/发布通道。
   // - 当前模块在控制组配置达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
   // - 幂等：控制组已在运行时直接返回 OK。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/配置未就绪）。
   rpc StartGroup(StartGroupRequest) returns (Empty);
-  // 停止控制组：停止事件触发控制任务，并停止与 DataCenter 的订阅/发布通道（若有）。
+  // 停止控制组：停止控制任务，并停止与 DataCenter 的订阅/发布通道（若有），同时清理控制运行态。
   // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。
   rpc StopGroup(StopGroupRequest) returns (Empty);
 }

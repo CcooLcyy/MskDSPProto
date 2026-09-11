@@ -14,7 +14,14 @@ enum GroupState {
   GROUP_STATE_PENDING_DELETE = 3;
 }
 
-// 运算符类型：数值与聚合运算仅接受 int64/double；逻辑运算仅接受 bool。
+// 计算触发方式：未指定时兼容旧配置，按变化触发处理。
+enum TriggerMode {
+  TRIGGER_MODE_UNSPECIFIED = 0;
+  TRIGGER_MODE_ON_CHANGE = 1;
+  TRIGGER_MODE_PERIODIC = 2;
+}
+
+// 运算符类型：数值与聚合运算接受 int64/double/decimal；逻辑运算仅接受 bool。
 enum OperatorKind {
   OPERATOR_KIND_UNSPECIFIED = 0;
   OPERATOR_KIND_ADD         = 1;
@@ -38,12 +45,13 @@ enum OperandSourceKind {
   OPERAND_SOURCE_CONSTANT     = 2;
 }
 
-// 类型化常量：V1 仅支持 bool/int64/double。
+// 类型化常量：decimal_value 输入允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入；参与精确运算后的规范输出固定保留 20 位小数。
 message TypedConstant {
   oneof kind {
     bool bool_value = 1;
     int64 int_value = 2;
     double double_value = 3;
+    string decimal_value = 4;
   }
 }
 
@@ -61,7 +69,7 @@ message CalcItemConfig {
   OperandSpec right_operand = 4;
   // SUM/AVERAGE 的有序操作数列表，至少包含两个操作数；可混合路由输入与常量。
   repeated OperandSpec operands = 5;
-  // AVERAGE 的结果小数位数；未设置时不主动舍入。
+  // AVERAGE 的结果小数位数，合法范围为 0..20；设置后按半数远离零舍入，未设置时不主动舍入。
   optional uint32 decimal_places = 6;
 }
 
@@ -93,6 +101,9 @@ message CalcItemInfo {
 message CalcGroupConfig {
   string group_name = 1;
   repeated CalcItemConfig items = 2;
+  TriggerMode trigger_mode = 3;
+  // 周期触发间隔，单位为毫秒；仅 TRIGGER_MODE_PERIODIC 生效且必须大于 0。
+  uint32 period_ms = 4;
 }
 
 // 单条分组持久化记录（用于 Calc 模块本地落盘）。
@@ -152,6 +163,7 @@ message ListGroupsResponse {
 service CalcService {
   // 创建/更新一个计算分组配置，并为该 group 分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 group_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - trigger_mode 未指定时按变化触发兼容；周期触发要求 period_ms>0。
   // - 成功返回仅表示分组配置已生效并完成必要落盘，不保证分组功能已经开始订阅或发布结果。
   // - 返回：CalcGroupInfo（包含 conn_id、当前 state、last_error 与 items 内建点信息）。
   rpc UpsertGroup(UpsertGroupRequest) returns (CalcGroupInfo);
@@ -172,7 +184,7 @@ service CalcService {
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码。
   rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
 
-  // 启动分组功能：建立 DataCenter 订阅并在输入变化时计算、发布 result。
+  // 启动分组功能：建立 DataCenter 订阅，并按配置的变化触发或周期触发方式计算、发布 result。
   // - 幂等：分组已在运行时直接返回 OK。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/配置未就绪）。
   rpc StartGroup(StartGroupRequest) returns (Empty);

@@ -505,9 +505,16 @@ message PointMapping {
   FunctionalConstraint fc = 3;
   PointSource source = 4;
   PointValueType value_type = 5;
+  // 旧客户端兼容字段；精确配置优先使用对应的decimal文本字段。
   double scale = 6;
   double offset = 7;
   double deadband = 8;
+  // Decimal20倍率，非空时优先于scale并严格按十进制文本解析。
+  string scale_decimal = 9;
+  // Decimal20偏移，非空时优先于offset并严格按十进制文本解析。
+  string offset_decimal = 10;
+  // Decimal20死区，非空时优先于deadband；小于等于零表示不过滤。
+  string deadband_decimal = 11;
 }
 
 // 一个IED的完整点映射。

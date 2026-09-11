@@ -6,6 +6,7 @@ import "DLT645.proto";
 import "IEC104.proto";
 import "IEC61850.proto";
 import "ModbusRTU.proto";
+import "ModbusTCP.proto";
 import "AGC.proto";
 import "AVC.proto";
 import "Calc.proto";
@@ -69,6 +70,17 @@ message ModbusRtuConfig {
   // 1) 该配置不会替代 TRANSPORT_SERIAL，本地串口直连能力仍然保留；
   // 2) TRANSPORT_MQTT_UART 当前仅支持主站模式。
   ModbusRTUProto.MqttConfig mqtt = 2;
+}
+
+// ModbusTCP 主站链路目标态集合。
+message ModbusTcpLinkTask {
+  ModbusTCPProto.UpsertLinkRequest link = 1;
+  ModbusTCPProto.UpsertPointTableRequest point_table = 2;
+  bool start = 3;
+}
+
+message ModbusTcpConfig {
+  repeated ModbusTcpLinkTask links = 1;
 }
 
 // DLT645 下发任务。
@@ -160,6 +172,7 @@ message ControlOrchestratorConfig {
 message Config {
   Iec104Config iec104 = 1;
   ModbusRtuConfig modbus_rtu = 2;
+  ModbusTcpConfig modbus_tcp = 10;
   // 预留已删除字段号，避免后续复用导致协议兼容风险。
   reserved 3;
   Dlt645Config dlt645 = 4;

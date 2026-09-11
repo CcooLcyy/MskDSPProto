@@ -51,6 +51,8 @@ message PointValue {
     double double_value = 3;
     string string_value = 4;
     bytes  bytes_value  = 5;
+    // 精确十进制工程量：输入允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入；规范输出固定保留 20 位小数。
+    string decimal_value = 6;
   }
 }
 
@@ -211,10 +213,19 @@ message ExecuteCommandResponse {
   CommandRejectCode reject_code = 2;
   string reason = 3;
   Endpoint dst = 4;
+  // 以下 double 字段为旧客户端保留；精确十进制消费者应优先读取对应的 decimal 文本字段。
   double requested_value = 5;
   double accepted_value = 6;
   double lower_limit = 7;
   double upper_limit = 8;
+  // 规范 Decimal20 请求值，固定保留小数点后 20 位；空字符串表示未设置。
+  string requested_value_decimal = 9;
+  // 规范 Decimal20 接受值，固定保留小数点后 20 位；空字符串表示未设置。
+  string accepted_value_decimal = 10;
+  // 规范 Decimal20 下限，固定保留小数点后 20 位；空字符串表示未设置。
+  string lower_limit_decimal = 11;
+  // 规范 Decimal20 上限，固定保留小数点后 20 位；空字符串表示未设置。
+  string upper_limit_decimal = 12;
 }
 
 // 路由后的点值更新（目的连接/点）

@@ -208,6 +208,12 @@ message Point {
   optional uint32 byte_index = 9;
   // 位索引（0 表示最低有效位）；仅 DATA_TYPE_BOOL 生效。未设置时保持旧行为：整个首字节非 0 即 true。
   optional uint32 bit_index = 10;
+  // 十进制标度文本，非空时优先于 scale；允许普通十进制或科学计数法，超过 20 位小数按半数远离零量化，回读固定保留 20 位小数。
+  string scale_decimal = 11;
+  // 十进制偏移文本，非空时优先于 offset；允许普通十进制或科学计数法，超过 20 位小数按半数远离零量化，回读固定保留 20 位小数。
+  string offset_decimal = 12;
+  // 十进制死区文本，非空时优先于 deadband；允许普通十进制或科学计数法，超过 20 位小数按半数远离零量化，回读固定保留 20 位小数。
+  string deadband_decimal = 13;
 }
 
 // 数据块子项定义（按表格顺序拼接，不包含 DI）
@@ -228,6 +234,12 @@ message BlockItem {
   optional uint32 byte_index = 9;
   // 位索引（0 表示最低有效位）；仅 DATA_TYPE_BOOL 生效。未设置时保持旧行为：整个首字节非 0 即 true。
   optional uint32 bit_index = 10;
+  // 十进制标度文本，非空时优先于 scale；允许普通十进制或科学计数法，超过 20 位小数按半数远离零量化，回读固定保留 20 位小数。
+  string scale_decimal = 11;
+  // 十进制偏移文本，非空时优先于 offset；允许普通十进制或科学计数法，超过 20 位小数按半数远离零量化，回读固定保留 20 位小数。
+  string offset_decimal = 12;
+  // 十进制死区文本，非空时优先于 deadband；允许普通十进制或科学计数法，超过 20 位小数按半数远离零量化，回读固定保留 20 位小数。
+  string deadband_decimal = 13;
 }
 
 // 数据块定义（一个 DI 对应多个子项）

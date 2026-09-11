@@ -257,6 +257,12 @@ message Point {
   // 位索引（0 表示最低有效位）；仅当 DATA_TYPE_BOOL 使用 0x03/0x04 寄存器读取时生效。
   // 未设置时 BOOL 仍按 0x01 线圈单点读取；寄存器 BOOL 必须设置该字段。
   optional uint32 bit_index = 14;
+  // 精确十进制标度，非空时优先于 scale；允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入，查询时固定输出 20 位小数。
+  string scale_decimal = 15;
+  // 精确十进制偏移，非空时优先于 offset；允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入，查询时固定输出 20 位小数。
+  string offset_decimal = 16;
+  // 精确十进制死区，非空时优先于 deadband；工程量单位，<=0 表示不过滤，超过 20 位小数时按半数远离零舍入，查询时固定输出 20 位小数。
+  string deadband_decimal = 17;
 }
 
 message UpsertPointTableRequest {

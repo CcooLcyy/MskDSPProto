@@ -48,7 +48,8 @@ message LinkConfig {
 
   // SERVER: local 为监听地址；CLIENT: 可选本地绑定地址（留空表示由系统选择）
   Endpoint local  = 3;
-  // CLIENT: remote 为对端地址；SERVER: 当前版本忽略（预留用于白名单/绑定）
+  // CLIENT: remote 为对端地址；SERVER: remote.ip 为允许接入的主站 client IP。
+  // SERVER 下 remote.ip 为空或为 0.0.0.0/:: 时不启用来源 IP 限制；remote.port 不参与校验。
   Endpoint remote = 4;
 
   // IEC101/104 参数（后续按需扩展）
@@ -186,6 +187,12 @@ message Point {
   RemoteControlType remote_control_type = 8;
   // 遥控执行方式；未填写时兼容为选择执行。
   CommandExecutionMode command_execution_mode = 9;
+  // 精确十进制倍率；非空时优先于 scale。输入允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入；读取时固定返回 20 位小数。
+  string scale_decimal = 10;
+  // 精确十进制偏移；非空时优先于 offset。输入允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入；读取时固定返回 20 位小数。
+  string offset_decimal = 11;
+  // 精确十进制死区；非空时优先于 deadband。输入允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入；读取时固定返回 20 位小数。
+  string deadband_decimal = 12;
 }
 
 message UpsertPointTableRequest {
@@ -266,7 +273,7 @@ message SimulationRequest {
 service IEC104Service {
   // 创建/更新一条 IEC104 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
-  // - role=ROLE_SERVER：会校验 local.port 与 local.ip 格式，但不会在配置阶段检查本机是否拥有该地址、端口是否空闲或是否与其他停止链路冲突；role=ROLE_CLIENT：会校验 remote.ip/remote.port。
+  // - role=ROLE_SERVER：会校验 local.port、local.ip，以及可选的主站白名单 remote.ip；不会在配置阶段检查本机是否拥有监听地址、端口是否空闲或是否与其他停止链路冲突；role=ROLE_CLIENT：会校验 remote.ip/remote.port。
   // - 监听地址、端口占用和服务端链路之间的端点冲突在 StartLink 或自动启动时检查；失败只影响启动，不丢弃已保存的链路与点表。
   // - 成功返回仅表示链路配置已生效并完成必要落盘，不表示链路连接功能已经启动。
   // - 返回：LinkInfo（包含 conn_id、当前 state、last_error）。

@@ -12,6 +12,15 @@ enum ValueMode {
   VALUE_MODE_DELTA       = 2;
 }
 
+// 控制组控制方式。未指定时按 PI_EVENT 兼容处理。
+enum ControlMode {
+  CONTROL_MODE_UNSPECIFIED = 0;
+  // 现有事件触发 PI 控制方式。
+  CONTROL_MODE_PI_EVENT = 1;
+  // 按计算执行周期计算、按命令控制周期限频下发的直接分配方式。
+  CONTROL_MODE_DIRECT_CYCLIC = 2;
+}
+
 // 增量基准（仅在 mode=DELTA 时生效）
 enum DeltaBase {
   DELTA_BASE_UNSPECIFIED   = 0;
@@ -31,6 +40,10 @@ message SignalSpec {
   string unit   = 2;
   double scale  = 3;
   double offset = 4;
+  // Decimal20 倍率文本；非空时优先于旧 scale 字段。
+  string scale_decimal = 5;
+  // Decimal20 偏移文本；非空时优先于旧 offset 字段。
+  string offset_decimal = 6;
 }
 
 // 输入/输出点的值语义配置
@@ -68,6 +81,12 @@ message MemberConfig {
   SignalSpec p_meas  = 7;
   // 成员设定点（输出到 DataCenter，由有向路由转发给下游连接）
   ValueSpec  p_set   = 8;
+
+  // 以下 Decimal20 文本非空时分别优先于对应旧 double 字段。
+  string capacity_kw_decimal = 9;
+  string weight_decimal = 10;
+  string min_kw_decimal = 11;
+  string max_kw_decimal = 12;
 }
 
 // 派生输出点（由 AGC 发布，可被路由到其他连接，例如主站 IEC104）
@@ -90,6 +109,13 @@ message GroupConfig {
 
   repeated MemberConfig members = 5;
   DerivedOutputs outputs = 6;
+
+  // 控制方式；未指定时按 CONTROL_MODE_PI_EVENT 处理。
+  ControlMode control_mode = 7;
+  // 计算执行周期（秒），仅 DIRECT_CYCLIC 生效，取值范围 1～15。
+  double calculation_execution_period_seconds = 8;
+  // 命令控制周期（秒），仅 DIRECT_CYCLIC 生效，取值范围 4～30。
+  double command_control_period_seconds = 9;
 }
 
 // 单条控制组持久化记录（用于 AGC 模块本地落盘持久化）。
@@ -202,6 +228,16 @@ message MemberControlProfile {
   uint64 version = 11;
   // 参数确认时间（Unix 毫秒）。
   uint64 confirmed_at_ms = 12;
+  // 以下 Decimal20 文本非空时分别优先于对应旧 double 字段。
+  string up_p_gain_decimal = 13;
+  string up_i_gain_decimal = 14;
+  string down_p_gain_decimal = 15;
+  string down_i_gain_decimal = 16;
+  string up_bias_kw_decimal = 17;
+  string down_bias_kw_decimal = 18;
+  string integral_limit_kw_decimal = 19;
+  string max_step_kw_decimal = 20;
+  string max_ramp_kw_per_s_decimal = 21;
 }
 
 // 一个控制组的正式成员控制参数集合。
@@ -236,6 +272,10 @@ message TuningConfig {
   uint32 min_down_tests = 8;
   // 总量达标精度（kW）。
   double total_tolerance_kw = 9;
+  // 以下 Decimal20 文本非空时分别优先于对应旧 double 字段。
+  string target_lower_kw_decimal = 10;
+  string target_upper_kw_decimal = 11;
+  string total_tolerance_kw_decimal = 12;
 }
 
 enum TuningState {
@@ -288,6 +328,9 @@ message TuningStatus {
   double stable_elapsed_seconds = 11;
   string last_error = 12;
   GroupControlProfile candidate_profile = 13;
+  // 当前目标和当前量测的 Decimal20 固定 20 位文本；旧 double 字段继续用于兼容。
+  string current_target_kw_decimal = 14;
+  string current_total_meas_kw_decimal = 15;
 }
 
 // AGC 模块对外 gRPC 服务（控制面）：用于上位机配置/启停 AGC 控制组（group）。
@@ -308,12 +351,12 @@ service AGCService {
   // 删除控制组：停止并清理本地配置，并请求 DataCenter 删除对应连接（按 (module_name="AGC", group_name)）。
   // - 若 DataCenter 删除失败（非 NOT_FOUND），会保留本地配置并标记为 PENDING_DELETE，同时返回错误码，提示上位机重试。
   rpc DeleteGroup(DeleteGroupRequest) returns (Empty);
-  // 启动控制组：启动事件触发控制任务，并与 DataCenter 建立订阅/发布通道。
+  // 启动控制组：按控制组配置启动 PI 事件或周期直分配任务，并与 DataCenter 建立订阅/发布通道。
   // - 当前模块在控制组配置达到最小可运行条件后会自动启动；本 RPC 主要作为兼容入口保留。
   // - 幂等：控制组已在运行时直接返回 OK。
   // - 常见错误：NOT_FOUND、FAILED_PRECONDITION（待删除/配置未就绪）。
   rpc StartGroup(StartGroupRequest) returns (Empty);
-  // 停止控制组：停止事件触发控制任务，并停止与 DataCenter 的订阅/发布通道（若有）。
+  // 停止控制组：停止控制任务，并停止与 DataCenter 的订阅/发布通道（若有），同时清理控制运行态。
   // - 幂等：重复 StopGroup 不会报错（前提是 group_name 存在）。
   rpc StopGroup(StopGroupRequest) returns (Empty);
   // 启动控制组自动参数调试。调试期间所有成员一起参与上调/下调测试，目标在配置范围内由 AGC 自动选择。
