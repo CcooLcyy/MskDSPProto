@@ -24,6 +24,14 @@ enum LinkState {
   LINK_STATE_PENDING_DELETE = 3;
 }
 
+// 传输层连接状态；与 LinkState（链路功能是否启动）独立。
+enum ConnectionState {
+  CONNECTION_STATE_UNSPECIFIED  = 0;
+  CONNECTION_STATE_DISCONNECTED = 1;
+  CONNECTION_STATE_CONNECTING   = 2;
+  CONNECTION_STATE_CONNECTED    = 3;
+}
+
 message Endpoint {
   string ip   = 1;
   uint32 port = 2;
@@ -87,6 +95,8 @@ message LinkInfo {
   uint32 conn_id = 2;
   LinkState state = 3;
   string last_error = 4;
+  // IEC104 TCP 会话连接状态；与 state 独立，链路功能运行但未连接时为 DISCONNECTED。
+  ConnectionState connection_state = 5;
 }
 
 // IEC104 本地持久化的链路配置。
