@@ -268,6 +268,52 @@ message SimulationRequest {
   SimulationBoolMode bool_mode = 3;
 }
 
+// SOE 确认状态筛选条件。
+enum SoeAcknowledgedFilter {
+  SOE_ACKNOWLEDGED_FILTER_ALL = 0;
+  SOE_ACKNOWLEDGED_FILTER_ACKNOWLEDGED = 1;
+  SOE_ACKNOWLEDGED_FILTER_UNACKNOWLEDGED = 2;
+}
+
+// 查询一条 IEC104 链路已落盘的 SOE 历史记录。
+message QuerySoeRequest {
+  // 必填，IEC104 链路名称。
+  string conn_name = 1;
+  // 可选，事件时标下限（含），毫秒时间戳。
+  optional int64 start_ts_ms = 2;
+  // 可选，事件时标上限（含），毫秒时间戳。
+  optional int64 end_ts_ms = 3;
+  // 可选，按信息对象地址筛选。
+  optional uint32 ioa = 4;
+  // 确认状态筛选，默认返回全部记录。
+  SoeAcknowledgedFilter acknowledged_filter = 5;
+  // 每页条数，取值 1～8000；未填写或为 0 时使用服务端默认值。
+  uint32 page_size = 6;
+  // 可选游标，仅返回 event_sequence 小于该值的更早事件。
+  optional uint64 before_event_sequence = 7;
+}
+
+// SOE 历史事件记录。
+message SoeEvent {
+  uint64 event_sequence = 1;
+  string conn_name = 2;
+  uint32 ioa = 3;
+  bool state = 4;
+  int64 ts_ms = 5;
+  uint32 quality = 6;
+  bool acknowledged = 7;
+}
+
+// SOE 历史分页查询结果。
+message QuerySoeResponse {
+  repeated SoeEvent events = 1;
+  bool has_more = 2;
+  // 有下一页时返回本页最小 event_sequence。
+  optional uint64 next_event_sequence = 3;
+  uint32 total_count = 4;
+  uint32 unacknowledged_count = 5;
+}
+
 // IEC104 模块对外 gRPC 服务（控制面）：用于上位机配置链路与点表、以及启停链路。
 // 数据面通过 DataCenter 完成转发闭环：STATION_ROLE_MASTER 收到点值后 Publish，STATION_ROLE_SLAVE 通过 Subscribe/GetLatest 上送与总召。
 service IEC104Service {
@@ -331,4 +377,10 @@ service IEC104Service {
   // 清除当前固定模拟值并恢复 DataCenter 真实值上送路径；只清理内存，不删除点表或 Route。
   // 幂等：没有模拟值时仍返回 OK；角色不符返回 FAILED_PRECONDITION。
   rpc ClearSimulationValues(SimulationRequest) returns (Empty);
+  // 只读分页查询指定链路已落盘的 SOE 历史，不改变确认状态、不触发补传。
+  // - conn_name 必填；可按时间范围、IOA 和确认状态筛选。
+  // - 不填写 before_event_sequence 时返回最新一页；填写后返回序号更小的更早事件，按序号从新到旧排列。
+  // - page_size 为 1～8000，0 使用服务端默认值；超出范围返回 INVALID_ARGUMENT。
+  // - next_event_sequence/has_more 用于向更早记录翻页；链路不存在返回 NOT_FOUND，查询参数非法返回 INVALID_ARGUMENT。
+  rpc QuerySoe(QuerySoeRequest) returns (QuerySoeResponse);
 }
