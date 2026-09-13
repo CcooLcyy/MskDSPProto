@@ -376,7 +376,8 @@ service DataCenterService {
   // - 常见错误：INVALID_ARGUMENT（conn_id/tag/value 缺失）、NOT_FOUND（源或目的连接未注册）、RESOURCE_EXHAUSTED（源端 sequence 耗尽）。
   rpc Publish(PublishRequest) returns (Empty);
 
-  // 同步执行命令：DataCenter 按源端点路由找到唯一目的端点，并调用目标模块的 CommandExecutor。
+  // 同步执行命令：DataCenter 按源端点路由找到唯一目的端点，并调用目标模块的 CommandExecutor；
+  // 多个源端点指向同一目标连接时，按 DataCenter 受理顺序串行调用该目标模块。
   // - 不替代 Publish/Subscribe；仅用于需要协议级正/负确认的命令。
   // - 若没有路由、多路由、目标不可达或目标拒绝，返回 ExecuteCommandResponse.status 表示失败原因。
   // - ACCEPTED 时会更新目的端点最新值缓存；REJECTED 不更新命令输入缓存。
