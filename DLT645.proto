@@ -53,6 +53,13 @@ enum LinkState {
   LINK_STATE_PENDING_DELETE = 3;
 }
 
+// 现场通信健康状态（独立于链路生命周期状态）。
+enum CommunicationState {
+  COMMUNICATION_STATE_UNSPECIFIED = 0;  // 尚未完成有效抄读
+  COMMUNICATION_STATE_HEALTHY      = 1;  // 最近一轮至少有一个点成功解析
+  COMMUNICATION_STATE_UNHEALTHY    = 2;  // 最近一轮没有任何点成功解析
+}
+
 // 点位数据类型
 enum DataType {
   DATA_TYPE_UNSPECIFIED = 0;
@@ -125,6 +132,7 @@ message LinkInfo {
   uint32 conn_id = 2;
   LinkState state = 3;
   string last_error = 4;
+  CommunicationState communication_state = 5;
 }
 
 // 单条链路持久化记录（用于模块本地落盘）
