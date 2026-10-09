@@ -203,6 +203,10 @@ message Point {
   string offset_decimal = 11;
   // 精确十进制死区；非空时优先于 deadband。输入允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入；读取时固定返回 20 位小数。
   string deadband_decimal = 12;
+  // 从站遥测/遥信逐点固定上报开关；缺省关闭。仅覆盖发送值，不修改真实数据或工程量参数。
+  bool fixed_value_enabled = 13;
+  // 固定的 IEC104 报文数值，启用时绕过 scale/offset；FLOAT 必须为有限单精度范围，SINGLE 仅允许 0/1。
+  double fixed_value = 14;
 }
 
 message UpsertPointTableRequest {
