@@ -256,14 +256,14 @@ message Point {
   reserved 7, 8, 13;
   // 死区：工程量单位，仅对 UINT16/UINT32/INT16/INT32 生效，<=0 表示不过滤；当 >0 时，|delta| < deadband 过滤，|delta| >= deadband 上报。
   double deadband = 9;
-  // 寄存器数量（0 表示按 type 默认：UINT16/INT16=1、UINT32/INT32=2；BOOL 忽略）
+  // 寄存器数量（0 表示按 type 默认：UINT16/INT16/BOOL=1、UINT32/INT32=2；寄存器 BOOL 允许 1/2）
   uint32 reg_count = 10;
-  // 32 位拼接字序（仅对 UINT32/INT32 生效，0 表示 WORD_ORDER_HL）
+  // 32 位拼接字序（对 UINT32/INT32 与双寄存器 BOOL 生效，0 表示 WORD_ORDER_HL）
   WordOrder word_order = 11;
-  // 16 位字节序（仅对 UINT16/UINT32/INT16/INT32 生效，0 表示 BYTE_ORDER_AB）
+  // 16 位字节序（对数值寄存器与寄存器 BOOL 生效，0 表示 BYTE_ORDER_AB）
   ByteOrder byte_order = 12;
   // 位索引（0 表示最低有效位）；仅当 DATA_TYPE_BOOL 使用 0x03/0x04 寄存器读取时生效。
-  // 未设置时 BOOL 仍按 0x01 线圈单点读取；寄存器 BOOL 必须设置该字段。
+  // 寄存器 BOOL 必须且只能设置 bit_index、enum_value 中一个；线圈不设置。
   optional uint32 bit_index = 14;
   // 精确十进制标度，非空时优先于 scale；允许普通十进制或科学计数法，超过 20 位小数时按半数远离零舍入，查询时固定输出 20 位小数。
   string scale_decimal = 15;
@@ -271,6 +271,10 @@ message Point {
   string offset_decimal = 16;
   // 精确十进制死区，非空时优先于 deadband；工程量单位，<=0 表示不过滤，超过 20 位小数时按半数远离零舍入，查询时固定输出 20 位小数。
   string deadband_decimal = 17;
+  // 枚举遥信：按字节序/字序归一化后的无符号 raw == enum_value 发布 BOOL，忽略 scale/offset/deadband。
+  // 仅允许 BOOL + 0x03/0x04，与 bit_index 互斥；单寄存器值 <=65535，双寄存器值 <=4294967295，0 为有效值。
+  // 同址相同长度/解码序的不同枚举值可共存；未知枚举码使所有对应遥信为 false。
+  optional uint32 enum_value = 18;
 }
 
 message UpsertPointTableRequest {
