@@ -60,6 +60,37 @@ message ModuleRunningInfos {
   repeated ModuleRunningInfo module_running_info = 1;
 }
 
+// 设备平台接入的脱敏配置与运行状态；不返回设备令牌明文。
+message PlatformAccessStatus {
+  bool enabled = 1;
+  // 固定为 60.208.15.90:50000，仅供上位机显示，不允许通过配置修改。
+  string platform_target = 2;
+  string device_id = 3;
+  bool token_configured = 4;
+  bool ssh_enabled = 5;
+  uint32 ssh_port = 6;
+  // 配置修订，首次未保存时为 0；运行状态改变不会增加此值。
+  uint64 revision = 7;
+  bool online = 8;
+  // 脱敏的配置或连接错误，不包含令牌、请求正文或原始配置内容。
+  string last_error = 9;
+}
+
+// 出厂前通过现场管理连接保存平台接入设置，平台地址不可修改。
+message SetPlatformAccessConfigRequest {
+  // 必须等于读取到的配置修订，防止多个上位机覆盖彼此的修改。
+  uint64 expected_revision = 1;
+  bool enabled = 2;
+  string device_id = 3;
+  // 只写字段；为空保留已有令牌，更换已配置令牌的设备 ID 时需提供新令牌或显式清除。
+  string device_token = 4;
+  bool ssh_enabled = 5;
+  // 0 使用默认 22，其余必须为 1～65535 的本机 SSH 端口。
+  uint32 ssh_port = 6;
+  // 与非空 device_token 互斥；开启平台接入时不能清除令牌。
+  bool clear_device_token = 7;
+}
+
 // 模块管理服务：用于上位机发现模块、启动/停止模块、查询运行时 gRPC 地址等。
 // 说明：当前实现大多返回 OK（失败场景主要通过日志或回读查询验证），后续可扩展为返回明确错误码。
 service ModuleManage {
@@ -92,4 +123,12 @@ service ModuleManage {
   // 保存“启动模块列表”配置到 `./conf/config.db` 的 `ModuleManager/module_start_config`，用于上位机记忆启动集。
   // - 当前实现：仅落盘保存，不会在启动时自动读取并启动（如需自启动请由上位机调用 StartModule）。
   rpc SaveModuleStartConfig(ModuleInfos) returns (Empty) {}
+  // 读取脱敏的平台接入持久配置及当前连接状态，一元、幂等，不落盘也不建立连接。
+  // 控制器未安装返回 UNAVAILABLE；旧设备未实现该接口时由 gRPC 返回 UNIMPLEMENTED。
+  rpc GetPlatformAccessConfig(Empty) returns (PlatformAccessStatus) {}
+  // 校验修订后持久保存并立即切换平台连接功能，一元；重复的相同配置不重复切换任务。
+  // 空令牌保留，显式清除与新令牌互斥；响应不包含令牌，也不保证保存时已连接平台。
+  // 错误码：INVALID_ARGUMENT（字段/身份不合法）、ABORTED（修订冲突）、
+  // UNAVAILABLE（控制器未安装）、INTERNAL（持久化失败）；失败不得启动新的连接任务。
+  rpc SetPlatformAccessConfig(SetPlatformAccessConfigRequest) returns (PlatformAccessStatus) {}
 }
