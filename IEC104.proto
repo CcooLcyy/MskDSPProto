@@ -274,6 +274,12 @@ message SimulationSnapshot {
   repeated SimulationPoint points = 2;
 }
 
+// 手动提交完整的临时模拟快照；仅包含选择模拟的点，不改变持久化固定上报值。
+message SetSimulationValuesRequest {
+  string conn_name = 1;
+  repeated SimulationPoint points = 2;
+}
+
 message SimulationRequest {
   string conn_name = 1;
   // 仅 GenerateSimulationValues 使用；其他模拟值接口忽略该字段。
@@ -383,6 +389,12 @@ service IEC104Service {
   // 每个点生成一次值并保持不变，再次调用才会替换值。值只保存在 IEC104 内存中，不创建/写入 DataCenter Route，不落盘。
   // 非幂等：重复调用会重新生成并替换当前快照；无点表或角色不符返回 FAILED_PRECONDITION。
   rpc GenerateSimulationValues(SimulationRequest) returns (SimulationSnapshot);
+  // 手动原子替换当前完整模拟快照，仅允许从站的 FLOAT 遥测和 SINGLE 遥信，不自动发送、不落盘。
+  // points 不可为空；仅接受与点表一致且唯一的 Tag/类型、仅一个正确值字段；品质和时间由后端赋值。
+  // 工程量必须有限且能反向缩放为短浮点。任意点失败时保留旧快照；不修改固定上报值配置。
+  // 常见错误：INVALID_ARGUMENT（空列表、未知/重复 Tag、类型/字段错误或数值无效）、NOT_FOUND（连接不存在）、
+  // FAILED_PRECONDITION（非从站、无点表、非模拟业务点或已启用固定上报值）。重复相同请求仅更新时间。
+  rpc SetSimulationValues(SetSimulationValuesRequest) returns (SimulationSnapshot);
   // 查询当前固定模拟值；没有生成值时返回空快照。只读、无副作用；连接不存在返回 NOT_FOUND。
   rpc GetSimulationSnapshot(SimulationRequest) returns (SimulationSnapshot);
   // 将当前固定模拟值主动发送给已连接主站；不修改 DataCenter，也不改变当前快照。
