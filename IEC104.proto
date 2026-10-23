@@ -288,6 +288,24 @@ message SimulationRequest {
   SimulationBoolMode bool_mode = 3;
 }
 
+// 临时模拟值周期上报设置；仅运行态生效，不落盘。
+message SimulationPeriodicReportRequest {
+  string conn_name = 1;
+  bool enabled = 2;
+  // 发送间隔，整数秒，范围 1～3600。
+  uint32 interval_seconds = 3;
+}
+
+// 每个连接独立的周期上报状态；最近发送时间为 0 表示尚未周期发送。
+message SimulationPeriodicStatus {
+  string conn_name = 1;
+  bool enabled = 2;
+  uint32 interval_seconds = 3;
+  // 已启用且当前链路的数据传输已激活。
+  bool running = 4;
+  int64 last_sent_ms = 5;
+}
+
 // SOE 确认状态筛选条件。
 enum SoeAcknowledgedFilter {
   SOE_ACKNOWLEDGED_FILTER_ALL = 0;
@@ -403,6 +421,13 @@ service IEC104Service {
   // 清除当前固定模拟值并恢复 DataCenter 真实值上送路径；只清理内存，不删除点表或 Route。
   // 幂等：没有模拟值时仍返回 OK；角色不符返回 FAILED_PRECONDITION。
   rpc ClearSimulationValues(SimulationRequest) returns (Empty);
+  // 设置从站临时模拟快照的周期上报；幂等、仅内存生效，不立即发送，不写 DataCenter。
+  // 首次开启或间隔变化后等待完整周期；断线暂停，清除模拟值时关闭，模块重启不恢复。
+  // 常见错误：NOT_FOUND（连接不存在）、INVALID_ARGUMENT（间隔不在 1～3600 秒）、
+  // FAILED_PRECONDITION（非从站或启用时没有模拟快照）。失败时保留原状态。
+  rpc SetSimulationPeriodicReport(SimulationPeriodicReportRequest) returns (SimulationPeriodicStatus);
+  // 只读查询指定连接的周期上报状态，无发送、落盘或启停副作用；不存在返回 NOT_FOUND。
+  rpc GetSimulationPeriodicStatus(SimulationRequest) returns (SimulationPeriodicStatus);
   // 只读分页查询指定链路已落盘的 SOE 历史，不改变确认状态、不触发补传。
   // - conn_name 必填；可按时间范围、IOA 和确认状态筛选。
   // - 不填写 before_event_sequence 时返回最新一页；填写后返回序号更小的更早事件，按序号从新到旧排列。
