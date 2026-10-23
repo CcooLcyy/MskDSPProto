@@ -174,6 +174,10 @@ message UpsertLinkRequest {
   LinkConfig config = 1;
   // true: 若已存在则返回 ALREADY_EXISTS；false: 更新/覆盖已有配置
   bool create_only = 2;
+  // 可选连接配置 CAS；需与设备当前完整配置相同，不符或目标不存在返回 ABORTED。
+  LinkConfig expected_config = 3;
+  // 可选点表版本 CAS；用于读取计划更新/回滚，点表已变化或目标不存在返回 ABORTED。
+  optional uint64 expected_point_table_revision = 4;
 }
 
 message RenameLinkRequest {
@@ -282,6 +286,12 @@ message UpsertPointTableRequest {
   repeated Point points = 2;
   // true: 覆盖更新；false: 增量追加
   bool replace = 3;
+  // 可选并发保护；与当前版本不符返回 ABORTED，不修改点表或来源。
+  optional uint64 expected_revision = 4;
+  // 省略则保留来源；提供时必须 replace=true 且预期版本非零，空字符串清空来源。
+  optional string template_bindings_json = 5;
+  // 可选连接配置快照；点表保存时在同一锁内比较，配置变化返回 ABORTED。
+  LinkConfig expected_link_config = 6;
 }
 
 message GetPointTableRequest {
@@ -291,6 +301,10 @@ message GetPointTableRequest {
 message PointTable {
   string conn_name = 1;
   repeated Point points = 2;
+  // 点表成功保存后递增；支持模板来源的新下位机始终返回正数，旧下位机为零。
+  uint64 revision = 3;
+  // 有界 UTF-8 JSON，包含平台模板身份、版本、源点映射及应用基线，随点表原子落盘。
+  string template_bindings_json = 4;
 }
 
 // ModbusRTU 点表配置集合（用于本地落盘持久化）。
@@ -313,6 +327,8 @@ service ModbusRTUService {
   rpc GetConfig(Empty) returns (GetConfigResponse);
   // 创建/更新一条 ModbusRTU 链路配置，并为该链路分配/查询 DataCenter 的 conn_id。
   // - create_only=true：若 conn_name 已存在（本模块或 DataCenter 注册表中）返回 ALREADY_EXISTS。
+  // - 提供 expected_config 时进行完整配置 CAS，配置变化或目标不存在返回 ABORTED，不覆盖配置。
+  // - 提供 expected_point_table_revision 时同时比较点表版本，点表已变化返回 ABORTED，避免读取计划回滚覆盖已提交点表。
   // - 校验：
   //   1) TRANSPORT_SERIAL：serial.device 必填；
   //   2) TRANSPORT_MQTT_UART：serial_port 必填；
@@ -350,8 +366,12 @@ service ModbusRTUService {
   // - 约束：仅允许在链路停止状态下更新（运行中返回 FAILED_PRECONDITION）。
   // - 副作用：会将“tags 列表”同步到 DataCenter 连接标签注册表（用于路由配置校验/展示）。
   // - 成功返回仅表示点表已生效、已同步必要的 DataCenter tags 并完成落盘，不会自动启动链路连接功能。
+  // - 来源最多 32 MiB；提供来源需完整替换及非零预期版本，非法参数返回 INVALID_ARGUMENT。
+  // - 预期点表版本或连接配置不一致返回 ABORTED；先落盘后同步 DataCenter tags，磁盘失败不触碰标签/路由。
+  // - DataCenter 同步失败则回滚磁盘点表，内存版本及来源不推进；磁盘回滚失败明确报告并记录日志。
   rpc UpsertPointTable(UpsertPointTableRequest) returns (Empty);
   // 获取点表（tag <-> address 映射）。
+  // - 同时返回实际点表、正数 revision 与来源快照，供上位机跨电脑比对更新；无写入副作用。
   // - 常见错误：NOT_FOUND（conn_name 不存在）、INVALID_ARGUMENT（conn_name 为空）。
   rpc GetPointTable(GetPointTableRequest) returns (PointTable);
 }
