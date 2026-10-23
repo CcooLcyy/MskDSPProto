@@ -323,10 +323,10 @@ service DataCenterService {
   rpc ListConnections(Empty) returns (ListConnectionsResponse);
 
   // conn_id 分配器：按 (module_name, conn_name) 查询/创建稳定的 conn_id（全局唯一，可持久化）。
-  // - 若 key 已存在：返回既有 ConnectionInfo。
+  // - 若 key 已存在且无待落盘状态：直接返回既有 ConnectionInfo，不重复落盘。
   // - 若 key 不存在：分配新的 conn_id 并写入注册表。
   // - 常见错误：INVALID_ARGUMENT（key 缺失）、RESOURCE_EXHAUSTED（conn_id 耗尽）。
-  // - 副作用：成功后会触发连接注册表落盘（失败返回 INTERNAL；内存不回滚）。
+  // - 副作用：新建连接或此前完整状态保存失败时会重试落盘；失败返回 INTERNAL，内存不回滚。
   rpc GetOrCreateConnection(GetOrCreateConnectionRequest) returns (ConnectionInfo);
 
   // 重命名连接主键：将 (module_name, conn_name) 从 old_key 改为 new_key，conn_id 保持不变。
