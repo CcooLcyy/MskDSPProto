@@ -143,12 +143,14 @@ service ModuleManage {
   // 保存“启动模块列表”配置到 `./conf/config.db` 的 `ModuleManager/module_start_config`，用于上位机记忆启动集。
   // - 当前实现：仅落盘保存，不会在启动时自动读取并启动（如需自启动请由上位机调用 StartModule）。
   rpc SaveModuleStartConfig(ModuleInfos) returns (Empty) {}
-  // 读取脱敏的平台接入持久配置及当前连接状态，一元、幂等，不落盘也不建立连接。
+  // 读取脱敏的平台接入及普通外网持久配置和运行状态，一元、幂等，不落盘也不建立连接。
   // 控制器未安装返回 UNAVAILABLE；旧设备未实现该接口时由 gRPC 返回 UNIMPLEMENTED。
   rpc GetPlatformAccessConfig(Empty) returns (PlatformAccessStatus) {}
-  // 校验修订后持久保存并立即切换平台连接功能，一元；重复的相同配置不重复切换任务。
+  // 校验修订后应用普通外网、持久保存并切换平台连接功能，一元；相同的已成功配置保持幂等。
+  // 普通外网设置与平台开关独立；首次网络应用或失败恢复可能耗时，调用方应允许至少45秒。
   // 空令牌保留，显式清除与新令牌互斥；响应不包含令牌，也不保证保存时已连接平台。
   // 错误码：INVALID_ARGUMENT（字段/身份不合法）、ABORTED（修订冲突）、
-  // UNAVAILABLE（控制器未安装）、INTERNAL（持久化失败）；失败不得启动新的连接任务。
+  // FAILED_PRECONDITION（网络应用失败，需回读独立网络状态）、UNAVAILABLE（控制器未安装）、
+  // INTERNAL（持久化失败）；网络应用或保存失败时尝试恢复原网络，失败不得启动新的连接任务。
   rpc SetPlatformAccessConfig(SetPlatformAccessConfigRequest) returns (PlatformAccessStatus) {}
 }
