@@ -60,6 +60,16 @@ message ModuleRunningInfos {
   repeated ModuleRunningInfo module_running_info = 1;
 }
 
+// 设备普通 IPv4 外网出口；与平台接入开关独立，不接管纵密地址及 NAT。
+message OrdinaryNetworkConfig {
+  // 空字符串表示使用系统现有网络；指定出口时必须是设备上存在的网卡。
+  string interface_name = 1;
+  // 指定网卡上的同网段 IPv4 网关；不能使用本机地址、广播或多播地址。
+  string gateway = 2;
+  // 可选的逐接口 IPv4 DNS；不修改其他接口的解析配置。
+  repeated string dns_servers = 3;
+}
+
 // 设备平台接入的脱敏配置与运行状态；不返回设备令牌明文。
 message PlatformAccessStatus {
   bool enabled = 1;
@@ -74,6 +84,14 @@ message PlatformAccessStatus {
   bool online = 8;
   // 脱敏的配置或连接错误，不包含令牌、请求正文或原始配置内容。
   string last_error = 9;
+  // 新服务端始终回传本消息；旧服务端省略时表示不支持普通外网配置。
+  OrdinaryNetworkConfig network_config = 10;
+  // 仅表示网络设置已应用，不代表外网或平台业务连通性已经验证。
+  bool network_applied = 11;
+  // 网络应用错误独立于平台连接错误，不包含身份令牌。
+  string network_error = 12;
+  // 指定出口网卡上实际选用的本机 IPv4 地址，只读。
+  string network_source_address = 13;
 }
 
 // 出厂前通过现场管理连接保存平台接入设置，平台地址不可修改。
@@ -89,6 +107,8 @@ message SetPlatformAccessConfigRequest {
   uint32 ssh_port = 6;
   // 与非空 device_token 互斥；开启平台接入时不能清除令牌。
   bool clear_device_token = 7;
+  // 省略保留已有网络设置，兼容旧客户端；消息存在但网卡为空则撤销本功能管理的出口。
+  OrdinaryNetworkConfig network_config = 8;
 }
 
 // 模块管理服务：用于上位机发现模块、启动/停止模块、查询运行时 gRPC 地址等。
