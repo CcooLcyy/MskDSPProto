@@ -92,6 +92,9 @@ message PlatformAccessStatus {
   string network_error = 12;
   // 指定出口网卡上实际选用的本机 IPv4 地址，只读。
   string network_source_address = 13;
+  // 下位机自身的运行架构：arm64 用于 DSP 固定 684 出口，x64 用于沿用系统网络的测试环境。
+  // 旧服务端为空，未知值不得推断为 ARM64；字段只读，不依赖 DeviceInfo 或 SSH。
+  string device_architecture = 14;
 }
 
 // 出厂前通过现场管理连接保存平台接入设置，平台地址不可修改。
