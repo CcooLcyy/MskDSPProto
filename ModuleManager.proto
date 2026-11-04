@@ -106,7 +106,7 @@ message SetPlatformAccessConfigRequest {
   // 只写字段；为空保留已有令牌，更换已配置令牌的设备 ID 时需提供新令牌或显式清除。
   string device_token = 4;
   bool ssh_enabled = 5;
-  // 0 使用默认 22，其余必须为 1～65535 的本机 SSH 端口。
+  // 0 使用默认 10022，其余必须为 1～65535 的本机 SSH 端口。
   uint32 ssh_port = 6;
   // 与非空 device_token 互斥；开启平台接入时不能清除令牌。
   bool clear_device_token = 7;
