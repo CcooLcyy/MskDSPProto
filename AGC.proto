@@ -153,6 +153,10 @@ enum DefaultPointKind {
   DEFAULT_POINT_KIND_FUNCTION_ENABLE     = 7;
   // 控制组是否允许远方命令（BOOL，默认 true）。
   DEFAULT_POINT_KIND_REMOTE_OPERATION    = 8;
+  // 只读 BOOL 遥信：全部可控成员当前已发布的绝对设定值均达到有效上限。
+  DEFAULT_POINT_KIND_INCREASE_BLOCK      = 9;
+  // 只读 BOOL 遥信：全部可控成员当前已发布的绝对设定值均达到下限。
+  DEFAULT_POINT_KIND_DECREASE_BLOCK      = 10;
 }
 
 // AGC 默认点元数据：用于上位机发现控制组自动生成的内建点及其路由 tag。
