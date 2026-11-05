@@ -87,6 +87,14 @@ message MemberConfig {
   string weight_decimal = 10;
   string min_kw_decimal = 11;
   string max_kw_decimal = 12;
+
+  // 可选通信状态输入，通过 DataCenter 路由接收协议连接的 __communication_state。
+  // 仅原始整数 1 表示通信正常；未知、异常、停止、品质无效或超时均退出调节。
+  // 未配置时兼容原有成员参与规则；状态不使用工程量换算。
+  SignalSpec communication_state = 13;
+  // 通信状态心跳有效期，单位毫秒；0 使用默认 30000，非零范围 1000..3600000。
+  // 应大于源协议连接完整抄读周期，不能以普通量测点变化替代心跳。
+  uint32 communication_timeout_ms = 14;
 }
 
 // 派生输出点（由 AGC 发布，可被路由到其他连接，例如主站 IEC104）
