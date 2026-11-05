@@ -13,6 +13,17 @@ enum Quality {
   QUALITY_UNCERTAIN   = 3;
 }
 
+// 可组合的品质位常量；按位或后写入 quality_flags，而非作为单值枚举字段使用。
+// 掩码与普通 IEC104 品质位一致；具体信息对象允许哪些位由协议适配层约束。
+enum QualityFlag {
+  QUALITY_FLAG_NONE        = 0;
+  QUALITY_FLAG_OVERFLOW    = 1;
+  QUALITY_FLAG_BLOCKED     = 16;
+  QUALITY_FLAG_SUBSTITUTED = 32;
+  QUALITY_FLAG_NOT_TOPICAL = 64;
+  QUALITY_FLAG_INVALID     = 128;
+}
+
 // 同步命令执行结果。
 enum CommandStatus {
   COMMAND_STATUS_UNSPECIFIED = 0;
@@ -186,6 +197,10 @@ message PublishRequest {
   // 毫秒时间戳；<=0 表示由 DataCenter 填充
   int64   ts_ms   = 4;
   Quality quality = 5;
+  // 缺席：沿用旧 quality；显式零：所有品质位清零。未知位原样保留。
+  // 存在时兼容摘要：含 INVALID 为 BAD，其余非零为 UNCERTAIN，零为 GOOD。
+  // quality 可填 UNSPECIFIED 由 DataCenter 补齐；明确摘要矛盾时返回 INVALID_ARGUMENT。
+  optional uint32 quality_flags = 6;
 }
 
 message BatchPublishRequest {
@@ -205,6 +220,8 @@ message ExecuteCommandRequest {
   uint32 timeout_ms = 6;
   // DataCenter 转发给目标模块时填写的目的端点；协议模块发起调用时可不填。
   Endpoint dst = 7;
+  // 品质位及摘要校验规则与 PublishRequest 相同；校验通过后才调用目标执行器。
+  optional uint32 quality_flags = 8;
 }
 
 // 同步命令执行响应。
@@ -238,6 +255,8 @@ message PointUpdate {
   PointValue value   = 5;
   int64      ts_ms   = 6;
   Quality    quality = 7;
+  // 保留生产者提供明细的存在性；缺席与显式零不同，未知位不截断。
+  optional uint32 quality_flags = 8;
 }
 
 // 源端点最新值更新（用于实时监视，不依赖路由）。
@@ -249,6 +268,8 @@ message SourcePointUpdate {
   int64 ts_ms = 4;
   Quality quality = 5;
   uint64 sequence = 6;
+  // 源数据的完整品质位；存在性与摘要规则同 PointUpdate。
+  optional uint32 quality_flags = 7;
 }
 
 message SubscribeRequest {
