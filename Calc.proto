@@ -36,6 +36,8 @@ enum OperatorKind {
   OPERATOR_KIND_SUM         = 9;
   // 多项数值平均；操作数配置在 CalcItemConfig.operands 中。
   OPERATOR_KIND_AVERAGE     = 10;
+  // 混合逻辑表达式，操作数使用 operands，表达式使用 expression。
+  OPERATOR_KIND_LOGICAL_EXPRESSION = 11;
 }
 
 // 操作数来源：来自 DataCenter 路由输入槽位，或来自常量。
@@ -61,16 +63,21 @@ message OperandSpec {
   TypedConstant constant = 2;
 }
 
-// 单条计算项配置：旧二元/逻辑运算使用 left_operand/right_operand；SUM/AVERAGE 使用 operands。
+// 单条计算项配置：旧二元/逻辑运算使用 left_operand/right_operand；多输入与表达式使用 operands。
 message CalcItemConfig {
   string item_name = 1;
   OperatorKind operator_kind = 2;
   OperandSpec left_operand = 3;
   OperandSpec right_operand = 4;
-  // SUM/AVERAGE 的有序操作数列表，至少包含两个操作数；可混合路由输入与常量。
+  // SUM/AVERAGE 与多输入 AND/OR/XOR 的有序操作数列表至少两个；表达式至少一个。
+  // 多输入逻辑/表达式最多256个，且不能同时设置 left_operand/right_operand。
   repeated OperandSpec operands = 5;
   // AVERAGE 的结果小数位数，合法范围为 0..20；设置后按半数远离零舍入，未设置时不主动舍入。
   optional uint32 decimal_places = 6;
+  // 混合逻辑表达式：A..Z、AA..IV 对应 operands；支持 AND/OR/XOR/NOT 与括号，
+  // 同时接受 &&、||、^、!；不区分大小写，优先级 NOT > AND > XOR > OR。
+  // 最多256个输入、4096字节表达式、64层嵌套，所有输入必须被引用。
+  string expression = 7;
 }
 
 // 单个操作数的运行状态，用于解释计算项尚未发布结果的具体原因。
@@ -89,7 +96,7 @@ message CalcItemInfo {
   string left_input_tag = 2;
   string right_input_tag = 3;
   string result_tag = 4;
-  // 按 CalcItemConfig.operands 顺序返回聚合输入点；旧二元 item 也返回对应的两个输入点。
+  // 按 CalcItemConfig.operands 顺序返回多输入/表达式输入点；旧二元 item 返回对应两个输入点。
   repeated string input_tags = 5;
   // 当前各操作数是否已经收到可诊断的点值，以及未发布结果时的原因。
   repeated CalcOperandStatus operand_status = 6;
