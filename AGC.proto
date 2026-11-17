@@ -98,6 +98,12 @@ message MemberConfig {
   // 可控成员有功量测有效期，单位毫秒；0 关闭，非零范围 1000..3600000。
   // 依据 p_meas 的采样时间和品质判断，与通信状态心跳独立。
   uint32 measurement_validity_ms = 15;
+  // 可选成员增出力闭锁输入，从 DataCenter 接收原始 BOOL，true 禁止继续增加绝对有功设定。
+  // 缺省不限制上调；不使用单位或工程量换算。
+  SignalSpec increase_block_input = 16;
+  // 可选成员减出力闭锁输入，从 DataCenter 接收原始 BOOL，true 禁止继续减少绝对有功设定。
+  // 缺省不限制下调；两路分别配置，与只读的组闭锁输出点独立。
+  SignalSpec decrease_block_input = 17;
 }
 
 // 派生输出点（由 AGC 发布，可被路由到其他连接，例如主站 IEC104）
